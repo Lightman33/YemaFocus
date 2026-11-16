@@ -1,0 +1,76 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { setup } from './helpers.js';
+import { parseDocument, until } from '../tasks/dom-double.js';
+import { TasksView } from '../../app/tasks-view.js';
+import { mountReview } from '../../app/review-view.js';
+import { ReviewActions } from '../../app/review-actions.js';
+import { ReviewText, Period } from '../../app/review-model.js';
+import { TaskActions } from '../../app/task-actions.js';
+import { canonical, unitKey } from '../../sync/canonical.js';
+import { stateToPlanner } from '../../sync/convert.js';
+const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
+const period = Period.of('day', '2026-11-13');
+const input = (root, label) => root.querySelectorAll('textarea').find(n => n.getAttribute('aria-label') === label);
+const button = (root, label) => root.querySelectorAll('button').find(n => n.getAttribute('aria-label') === label || n.textContent === label);
+function mount(p, clock) {
+  const document = parseDocument(html); document.removeEventListener = function(type, fn) { this.handlers.set(type, (this.handlers.get(type) || []).filter(f => f !== fn)); };
+  const root = document.getElementById('review-root');
+  const tasks = new TasksView({ document, source: p.source, main: document.getElementById('main'), now: clock.now });
+  const review = mountReview({ root, dataSource: p.source, now: clock.now });
+  return { document, root, tasks, review, destroy() { review.destroy(); tasks.destroy(); } };
+}
+test('真实数据来源端到端：两设备模块并发→两段都留着→电脑版结构单标题→同步另一台相同', async t => {
+  const h = await setup(), { p } = h; await p.c.join(); const view = mount(p, h.clock);
+  t.after(() => { view.destroy(); p.c.dispose(); h.computer.engine.dispose(); });
+  const mobile = new ReviewActions(p.source, { now: h.clock.now }), computer = new ReviewActions(h.computerSource, { now: h.clock.now });
+  h.clock.advance(); await mobile.save(period, { modules: [['今日完成', '手机的虚构段落']] }); await computer.save(period, { modules: [['今日完成', '电脑的虚构段落']] });
+  await h.computer.engine.syncNow(); await p.c.syncNow();
+  const conflict = p.source.snapshot().conflicts.find(c => c.path[0] === 'review-module'); assert.ok(conflict);
+  const card = view.root.querySelectorAll('.review-conflict').find(c => c.textContent.includes('手机的虚构段落'));
+  button(card, '两段都留着，按上面的版本顺序各占一段').emit('click');
+  await until(() => !p.source.snapshot().conflicts.some(c => c.path[0] === 'review-module'));
+  const desktop = stateToPlanner((await p.store.read()).state.state), raw = desktop.reviews[0].content;
+  assert.equal(raw.split('【今日完成】').length - 1, 1); assert.ok(raw.includes('手机的虚构段落')); assert.ok(raw.includes('电脑的虚构段落'));
+  assert.equal(ReviewText.parse(raw).filter(([title]) => title === '今日完成').length, 1);
+  h.clock.advance(); await p.c.syncNow(); await h.computer.engine.syncNow(); await h.computerSource.refresh();
+  assert.equal(h.computerSource.snapshot().planner.reviews[0].content, raw);
+});
+test('未分段正文两段保留；评分不允许两段拼接', async t => {
+  const h = await setup(), { p } = h; await p.c.join(); t.after(() => { p.c.dispose(); h.computer.engine.dispose(); });
+  const a = new ReviewActions(p.source, { now: h.clock.now }), b = new ReviewActions(h.computerSource, { now: h.clock.now }); h.clock.advance();
+  await a.save(period, { sections: [['', '手机未分段']], score: 4 }); await b.save(period, { sections: [['', '电脑未分段']], score: 5 });
+  await h.computer.engine.syncNow(); await p.c.syncNow();
+  const conflicts = p.source.snapshot().conflicts, plain = conflicts.find(c => c.path[0] === 'review-module' && c.path[2] === '');
+  await p.source.resolve(plain.key, { type: 'both' });
+  const raw = p.source.snapshot().planner.reviews[0].content; assert.match(raw, /手机未分段/); assert.match(raw, /电脑未分段/); assert.doesNotMatch(raw, /【】/);
+  const score = conflicts.find(c => c.path[0] === 'review-score'); await assert.rejects(p.source.resolve(score.key, { type: 'both' }), /不能直接拼/);
+});
+test('真实页面：远端刷新时任务和复盘输入节点、文字、光标不被替换；flush后保留分支', async t => {
+  const h = await setup(), { p } = h; await p.c.join(); const view = mount(p, h.clock);
+  t.after(() => { view.destroy(); p.c.dispose(); h.computer.engine.dispose(); });
+  await view.tasks.openDetail('t'); const taskInput = view.document.querySelectorAll('textarea').find(n => n.dataset.field === 'notes');
+  taskInput.focus(); taskInput.value = '手机正在说的任务文字'; taskInput.selectionStart = 4; taskInput.emit('compositionstart'); taskInput.emit('input');
+  h.clock.advance(); await new TaskActions(h.computerSource, { now: h.clock.now }).patch('t', { notes: '电脑的新备注' }); await h.computer.engine.syncNow(); await p.c.foreground();
+  assert.equal(view.document.querySelectorAll('textarea').find(n => n.dataset.field === 'notes'), taskInput); assert.equal(taskInput.value, '手机正在说的任务文字'); assert.equal(taskInput.selectionStart, 4);
+  taskInput.emit('compositionend'); await view.tasks.flush();
+  assert.ok(p.source.snapshot().conflicts.some(c => c.path[0] === 'task-content'));
+  const reviewInput = input(view.root, '复盘模块：今日完成'); reviewInput.focus(); reviewInput.emit('compositionstart'); reviewInput.value = '手机正在输入的复盘'; reviewInput.selectionStart = 5; reviewInput.emit('input');
+  h.clock.advance(); await new ReviewActions(h.computerSource, { now: h.clock.now }).save(period, { title: '电脑更新标题', modules: [['今日完成', '电脑的新正文']] });
+  await h.computer.engine.syncNow(); await p.c.foreground();
+  assert.equal(input(view.root, '复盘模块：今日完成'), reviewInput); assert.equal(reviewInput.value, '手机正在输入的复盘'); assert.equal(reviewInput.selectionStart, 5);
+  assert.equal(input(view.root, '一句话总结').value, '电脑更新标题');
+  reviewInput.emit('compositionend'); await view.review.flush();
+  assert.ok(p.source.snapshot().conflicts.some(c => c.path[0] === 'review-module'));
+});
+test('任务备注冲突在真实任务页解决，两台最终完全相同', async t => {
+  const h = await setup(), { p } = h; await p.c.join(); const view = mount(p, h.clock);
+  t.after(() => { view.destroy(); p.c.dispose(); h.computer.engine.dispose(); });
+  h.clock.advance(); await new TaskActions(p.source, { now: h.clock.now }).patch('t', { notes: '手机备注' }); await new TaskActions(h.computerSource, { now: h.clock.now }).patch('t', { notes: '电脑备注' });
+  await h.computer.engine.syncNow(); await p.c.syncNow(); await view.tasks.openDetail('t');
+  const both = view.document.querySelectorAll('button').find(n => n.textContent === '两段都留着'); assert.ok(both); both.emit('click');
+  await until(() => !p.source.snapshot().conflicts.length);
+  h.clock.advance(); await p.c.syncNow(); await h.computer.engine.syncNow();
+  assert.equal(canonical((await p.store.read()).state.state), canonical(h.computer.engine.getState()));
+});

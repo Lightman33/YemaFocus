@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>复盘与统计 · 独立验收预览</title>
+  <link rel="stylesheet" href="./app/ui.css">
+  <link rel="stylesheet" href="./app/review.css">
+</head>
+<body>
+  <p class="review-preview-note">仅供验收的预览页，不随正式版发布。全部内容均为虚构；修改仅保存在内存，刷新后重置。今天有模块冲突，昨天有存档模块。</p>
+  <main><section id="review-root" aria-label="复盘与统计预览"></section></main>
+  <script type="module">
+    import { mountReview } from './app/review-view.js';
+    import { wallTime } from './app/review-model.js';
+    import { createDemoReviewSource } from './app/demo-review-data.js';
+    const now = () => Date.now();
+    const source = createDemoReviewSource(wallTime(now(), 'Asia/Shanghai').slice(0, 10), { now });
+    mountReview({ root: document.getElementById('review-root'), dataSource: source, now });
+  </script>
+</body>
+</html>

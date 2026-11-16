@@ -1,0 +1,66 @@
+/* 仅复盘页；色彩均使用外壳的明暗变量。 */
+.review-page { max-width: 640px; margin: auto; }
+.review-page button { min-width: 44px; min-height: 44px; font-size: max(1rem, 16px); }
+.review-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.review-heading h1 { margin: 0; font-size: 1.25rem; letter-spacing: 0; }
+.review-save { font-size: .8125rem; margin: 4px 0 8px; overflow-wrap: anywhere; }
+.review-segments { display: flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 6px 0; }
+.review-segments button { flex: 1; padding: 4px; border-radius: 0; color: var(--ink); background: var(--surface); }
+.review-segments button[aria-pressed="true"] { background: var(--accent); color: var(--button-ink); }
+.review-period { display: flex; align-items: center; gap: 4px; }
+.review-period strong { flex: 1; text-align: center; font-size: .9375rem; overflow-wrap: anywhere; }
+.review-period button { padding: 4px; background: var(--surface); color: var(--ink); border-color: var(--border); }
+.review-notice { padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.review-summary { font-size: .875rem; color: var(--caption); }
+.review-stars { display: flex; gap: 2px; }
+.review-stars button { flex: none; width: 44px; height: 44px; padding: 0; background: var(--surface); color: var(--accent); font-size: 1.8rem; }
+.review-page label { margin-top: 10px; }
+.review-page textarea { display: block; font: inherit; font-size: max(1rem, 16px); width: 100%; min-height: 48px; resize: none; overflow-y: hidden; border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--surface); color: var(--ink); }
+.review-page textarea:disabled { color: var(--ink); -webkit-text-fill-color: var(--ink); opacity: 1; }
+.review-module { margin: 10px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.review-module > button { width: 100%; text-align: left; background: transparent; color: var(--ink); padding: 8px 12px 0; }
+.review-preview { display: block; padding: 0 12px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .875rem; }
+.review-module-body { padding: 0 12px 12px; }
+.review-fulltext { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 8px 0; }
+.review-actions { display: flex; gap: 8px; margin: 14px 0; }
+.review-actions button { flex: 1; padding: 8px; }
+.review-conflict { border: 2px solid var(--danger); padding: 12px; border-radius: 10px; margin: 8px; }
+.review-conflict h3 { font-size: 1rem; color: var(--danger); }
+.review-conflict button { width: 100%; margin-top: 8px; }
+.review-version { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.review-snackbar { position: fixed; z-index: 4; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); left: 8px; right: 8px; max-width: 624px; margin: auto; padding: 10px; border: 2px solid var(--border); background: var(--ink); color: var(--surface); border-radius: 12px; display: flex; gap: 8px; align-items: center; }
+.review-snackbar span { flex: 1; overflow-wrap: anywhere; }
+.review-snackbar button { background: var(--surface); color: var(--ink); }
+.review-copy { width: min(96vw, 640px); }
+.review-copy textarea { min-height: 55dvh; overflow-y: auto; }
+.review-card { background: var(--surface); border: 1px solid var(--border); padding: 14px; border-radius: 14px; margin: 12px 0; }
+.review-preview-note { margin: 0; padding: 8px 12px; background: var(--panel); color: var(--caption); font-size: .875rem; }
+.review-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.review-metric { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 12px; min-width: 0; overflow-wrap: anywhere; }
+.review-metric h3 { margin: 0; color: var(--caption); font-size: .875rem; }
+.review-number { display: block; font-size: 1.25rem; margin: 6px 0; }
+.review-metric p { margin: 4px 0; font-size: .8125rem; }
+.review-metric progress { width: 100%; height: 10px; accent-color: var(--accent); }
+.review-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: .875rem; }
+.review-done-legend { color: var(--blue); }
+.review-pomo-legend { color: var(--accent); }
+.review-chart-scroll { overflow-x: auto; padding: 4px 3px 8px; }
+.review-chart { display: grid; grid-template-columns: repeat(var(--review-columns), minmax(44px, 1fr)); min-width: calc(var(--review-columns) * 44px); border-bottom: 1px solid var(--border); }
+.review-chart-segment { padding: 4px 2px; border-radius: 4px; min-width: 44px; color: var(--ink); background: transparent; font-weight: 400; }
+.review-chart-segment[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--hover); }
+.review-bars { height: 114px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+.review-bar { width: 12px; display: block; }
+.review-bar-done { background: var(--blue); }
+.review-bar-pomo { background: repeating-linear-gradient(0deg, var(--accent) 0, var(--accent) 4px, var(--surface) 4px, var(--surface) 5px); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+.review-axis { display: block; font-size: .75rem; height: 28px; line-height: 28px; white-space: nowrap; }
+.review-chart-detail { min-height: 44px; margin: 0; color: var(--caption); }
+.review-ratio { margin-top: 14px; }
+.review-ratio-text { display: flex; flex-wrap: wrap; gap: 2px 10px; justify-content: space-between; font-size: .875rem; overflow-wrap: anywhere; }
+.review-ratio-text strong { font-weight: 400; color: var(--caption); }
+.review-track { height: 10px; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-top: 6px; background: var(--surface); }
+.review-track span { display: block; height: 100%; background: var(--accent); }
+.review-task { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); padding: 4px 0; overflow-wrap: anywhere; }
+.review-task button { flex: none; padding: 4px; width: 44px; background: var(--surface); color: var(--accent); font-size: 1.5rem; }
+.review-card ol { padding-left: 24px; }
+.review-card li { margin: 8px 0; overflow-wrap: anywhere; }
+@media (max-width: 359px) { .review-metric { padding: 8px; } .review-number { font-size: 1.125rem; } }

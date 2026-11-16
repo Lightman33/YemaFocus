@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' https://api.github.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#EEF3F1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0C1A1E" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="野马专注">
+  <meta name="description" content="野马专注与健康助手：手机上记录，安心存本机。">
+  <meta name="referrer" content="no-referrer">
+  <title>野马专注与健康助手</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./app/ui.css">
+  <link rel="stylesheet" href="./app/review.css">
+  <link rel="stylesheet" href="./app/sync.css">
+  <script type="module" src="./app/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">跳到页面内容</a>
+  <header class="app-header">
+    <div class="brand"><span class="dial" aria-hidden="true"></span><div><strong>野马</strong></div><span class="edition" id="demo-badge" hidden>示例数据</span></div>
+    <div class="sync-strip" aria-label="同步状态">
+      <button id="sync-facts" class="sync-facts text-button" type="button" aria-live="polite">正在打开本机存储…</button>
+      <p id="network-status" role="status" aria-live="polite"></p>
+      <button id="sync-error" class="text-button error-text" type="button" hidden>同步出错（点开看原因）</button>
+    </div>
+    <button id="update-app" class="update-button" type="button" hidden>有新版本，点此更新</button>
+  </header>
+
+  <p id="storage-error" class="fatal" role="alert" hidden></p>
+  <p id="offline-ready" class="offline-note" role="status">首次打开请保持联网，正在准备离线外壳。</p>
+
+  <main id="main" tabindex="-1">
+    <section id="page-tasks" aria-labelledby="title-tasks" hidden>
+      <div class="tasks-heading"><h1 id="title-tasks" tabindex="-1">全部任务 <small id="task-count"></small></h1>
+        <div class="group-switch" role="group" aria-label="任务分组方式"><button id="group-time" type="button" aria-pressed="true">按时间</button><button id="group-project" type="button" aria-pressed="false">按项目</button></div>
+      </div>
+      <p id="task-loading" class="caption" role="status" aria-live="polite" hidden>专注统计及其他内容正在载入…</p>
+      <p id="task-join-tip" class="caption">先在设置里连接并完成第一次同步</p>
+      <form id="task-quick-form" class="quick-form" autocomplete="off">
+        <label class="visually-hidden" for="task-quick">快速新建任务</label><input id="task-quick" type="text" enterkeyhint="done" placeholder="写一件事，如：整理书架 明天" disabled>
+        <button id="task-add" class="primary" type="submit" disabled>添加</button>
+      </form>
+      <div id="task-parse" class="parse-preview" aria-label="新任务解析预览" aria-live="polite"></div>
+      <button id="task-conflicts" class="conflict-banner" type="button" hidden></button>
+      <p id="task-empty" class="caption" hidden>目前没有未完成的任务。在上方说一句，或打字添加。</p>
+      <div id="task-list" aria-label="全部任务列表"></div>
+    </section>
+
+    <section id="page-review" aria-labelledby="title-review" hidden>
+      <p class="eyebrow">回头看看，再向前一步</p>
+      <h1 id="title-review" tabindex="-1">复盘</h1>
+      <div id="review-root" aria-live="polite">正在载入…</div>
+    </section>
+
+    <section id="page-settings" aria-labelledby="title-settings" hidden>
+      <p class="eyebrow">你的设备，你的数据</p>
+      <h1 id="title-settings" tabindex="-1">设置</h1>
+      <details id="setup-guide" class="card guide" open>
+        <summary>第一次使用：按步骤连接手机和电脑</summary>
+        <p>在浏览器自行打开 github.com。以下英文名称来自本项目已核实的 GitHub 文档，实际界面可能略有不同。</p>
+        <ol>
+          <li>先验证账号邮箱。点右上角加号 → <strong>New repository</strong>，在 <strong>Owner</strong> 选自己、填写 <strong>Repository name</strong>。数据仓库选择私有（Private），把 <strong>Add README</strong> 切到 <strong>On</strong>，再点 <strong>Create repository</strong>。</li>
+          <li>点头像 → <strong>Settings</strong> → <strong>Developer settings</strong> → <strong>Personal access tokens</strong> → <strong>Fine-grained tokens</strong> → <strong>Generate new token</strong>。填写 <strong>Token name</strong>、在 <strong>Expiration</strong> 选择有效期；文档没有列出界面具体有哪些有效期选项。</li>
+          <li><strong>Resource owner</strong> 选自己；<strong>Repository access</strong> 选 <strong>Only select repositories</strong>，在 <strong>Selected repositories</strong> 只选这个私有数据仓库。在 <strong>Permissions</strong> 中把 <strong>Contents</strong> 设为读写（read、write；文档未写具体点哪里）。点 <strong>Generate token</strong> 后马上复制保存。</li>
+          <li>回到这里填写所有者、仓库名、令牌和设备名，点“保存设置”，再点“测试连接”。测试只验证可读，请确认令牌有写权限。</li>
+          <li>先在电脑上开启同步并发布一次，再在手机点“从电脑加入”。加入成功后即可编辑，修改先存本机，再自动上传。未加入之前不会自动连接 GitHub。</li>
+        </ol>
+      </details>
+      <form id="settings-form" class="card" autocomplete="off">
+        <h2>连接 GitHub</h2>
+        <p class="caption">令牌像一把只开这个仓库的钥匙，请只授权你的私有数据仓库。令牌只保存在这台手机的当前浏览器中，连接时直接发给 GitHub。</p>
+        <label for="owner">仓库所有者</label>
+        <input id="owner" name="owner" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="100" placeholder="填写 GitHub 用户名" required disabled>
+        <label for="repo">仓库名</label>
+        <input id="repo" name="repo" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="100" placeholder="填写私有仓库名称" required disabled>
+        <label for="token">令牌</label>
+        <div class="token-row"><input id="token" name="token" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="token-tip" required disabled><button id="toggle-token" class="secondary" type="button" aria-controls="token" aria-pressed="false" disabled>显示令牌</button></div>
+        <p id="token-tip" class="caption">不要填写 GitHub 登录密码；设备名和令牌均不会被放进网页链接。</p>
+        <label for="device-name">设备名</label>
+        <input id="device-name" name="device-name" type="text" maxlength="80" placeholder="例如：我的手机" required disabled>
+        <p class="caption">设备号：<span id="device-id">正在准备…</span></p>
+        <button id="save-settings" class="primary" type="submit" disabled>保存设置</button>
+        <p id="save-result" class="result" role="status" aria-live="polite"></p>
+        <div class="actions"><button id="test-connection" class="secondary" type="button" disabled>测试连接</button><button id="sync-now" class="secondary" type="button" disabled>从电脑加入</button></div>
+        <p id="sync-summary" class="caption"></p>
+        <p id="connection-result" class="result" role="status" aria-live="polite"></p>
+      </form>
+      <div id="task-zone-card" class="card" hidden>
+        <h2>软件时区</h2><p id="task-zone-tip" class="caption"></p>
+        <label for="task-zone">为电脑的软件时区选择对应地区</label>
+        <select id="task-zone"><option value="Asia/Shanghai">中国 · 上海</option><option value="Asia/Taipei">台北</option><option value="Asia/Tokyo">东京</option><option value="Asia/Singapore">新加坡</option><option value="Asia/Kolkata">印度 · 加尔各答</option><option value="Europe/London">伦敦</option><option value="Europe/Berlin">柏林</option><option value="America/New_York">纽约</option><option value="America/Chicago">芝加哥</option><option value="America/Denver">丹佛</option><option value="America/Los_Angeles">洛杉矶</option><option value="Australia/Sydney">悉尼</option><option value="Pacific/Auckland">奥克兰</option><option value="UTC">UTC</option></select>
+        <button id="task-zone-save" class="secondary" type="button">保存时区选择</button>
+      </div>
+      <div class="card">
+        <h2>本机与离线</h2>
+        <p id="persistence-status" role="status">正在申请本机存储保护…</p>
+        <p class="caption">浏览器仍可能在你手动清除网站数据时移除记录。首次联网加载完成后，可离线打开外壳。</p>
+        <button id="clear-data" class="danger-button" type="button" disabled>清除本机数据</button>
+        <p class="caption">将清除当前浏览器中本站的状态、待上传快照、设置和令牌。仓库里的文件不会被删除。</p>
+      </div>
+      <div id="sim-controls" class="card" hidden><h2>模拟仓库（仅供验收）</h2><button id="sim-task" type="button" class="secondary">模拟电脑改一条任务并发布</button><button id="sim-review" type="button" class="secondary">模拟电脑改今天复盘的一个模块并发布</button><button id="sim-network" type="button" class="secondary">模拟断网</button><p id="sim-result" role="status"></p></div>
+      <p class="version">版本 <span id="app-version">2.9.0-sync.2</span> · 本机优先</p>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="主导航">
+    <a href="#tasks" data-page="tasks"><span aria-hidden="true">✓</span>任务</a>
+    <a href="#review" data-page="review"><span aria-hidden="true">↗</span>复盘</a>
+    <a href="#settings" data-page="settings"><span aria-hidden="true">⚙</span>设置</a>
+  </nav>
+
+  <div id="task-snackbar" class="task-snackbar" role="status" aria-live="polite" hidden><span id="task-snack-text"></span><button id="task-undo" type="button" hidden>撤销</button></div>
+  <dialog id="task-sheet" class="task-sheet" aria-labelledby="task-sheet-title">
+    <div class="sheet-heading"><h2 id="task-sheet-title">任务详情</h2><button id="task-sheet-close" class="secondary" type="button" aria-label="关闭任务面板">关闭</button></div>
+    <p id="task-save-status" class="caption" role="status" aria-live="polite"></p><div id="task-sheet-body"></div>
+  </dialog>
+  <dialog id="error-dialog" aria-labelledby="error-title">
+    <h2 id="error-title">同步状态</h2><p id="error-detail"></p><p id="sync-full"></p><p id="sync-warning"></p><button id="retry-sync" type="button" class="secondary">重试</button><button id="close-error" class="primary" type="button">知道了</button>
+  </dialog>
+  <dialog id="repository-dialog" aria-labelledby="repository-title">
+    <h2 id="repository-title">仓库变了，请选择数据怎么处理</h2>
+    <p>这是同一份数据搬了家：把手机上的数据带过去，换新设备号并完整发布。</p>
+    <button id="repository-move" type="button" class="secondary">这是同一份数据搬了家（把手机上的数据带过去）</button>
+    <p>这是另一份数据：放弃手机上现有的任务、复盘和其他同步内容，再从新仓库加入。</p>
+    <button id="repository-replace" type="button" class="danger-button">这是另一份数据（从新仓库重新加入）</button>
+    <button id="repository-cancel" type="button" class="secondary">取消，保留当前绑定</button>
+  </dialog>
+  <dialog id="discard-dialog" aria-labelledby="discard-title"><h2 id="discard-title">确认放弃手机现有数据？</h2><p id="discard-explanation"></p><button id="discard-confirm" type="button" class="danger-button">确认放弃并重新加入</button><button id="discard-cancel" type="button" class="secondary">保留现有数据</button></dialog>
+  <dialog id="clear-dialog" aria-labelledby="clear-title" aria-describedby="clear-explanation">
+    <h2 id="clear-title">清除这台设备的数据？</h2><p id="clear-explanation">尚未上传的内容将无法从仓库找回。此操作不会删除 GitHub 仓库中的文件。</p>
+    <p id="clear-result" role="alert"></p>
+    <div class="actions"><button id="cancel-clear" class="secondary" type="button" autofocus>保留数据</button><button id="confirm-clear" class="danger-button" type="button">确认清除本机数据</button></div>
+  </dialog>
+  <noscript><p class="fatal">请允许此网站运行 JavaScript，才能保存设置和使用离线功能。</p></noscript>
+</body>
+</html>

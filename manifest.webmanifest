@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "野马专注与健康助手",
+  "short_name": "野马专注",
+  "description": "手机记录，本机优先",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EEF3F1",
+  "theme_color": "#EEF3F1",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
