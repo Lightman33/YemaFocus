@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>更新网页版 · 野马</title>
+<link rel="stylesheet" href="./app/ui.css">
+</head>
+<body>
+<main id="main">
+<h1>更新网页版</h1>
+<p>手机一直停在旧版本时用这一页。它只清除“离线外壳”（网页程序自己的缓存），<strong>不删除你在手机上保存的设置和数据</strong>。</p>
+<pre id="state" aria-live="polite">正在读取当前状态…</pre>
+<p><button id="reset" type="button" disabled>清除旧版本，重新打开</button></p>
+<pre id="out" aria-live="polite"></pre>
+</main>
+<script type="module" src="./reset.js"></script>
+</body>
+</html>
