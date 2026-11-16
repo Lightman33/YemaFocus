@@ -315,3 +315,15 @@ test('同一实例并发操作会串行，两次写入至少隔一秒；失败�
   await failure(transport.list('dir'), 'server');
   assert.deepEqual(await transport.list('dir'), []);
 });
+
+test('真实浏览器的 fetch 不接受调用者对象：必须以无 this 的方式调用', async () => {
+  // 模拟浏览器行为：this 不是 undefined 或全局对象就抛 TypeError（Illegal invocation）。
+  function strictFetch(url, init) {
+    'use strict';
+    if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+    return Promise.resolve(json({ private: true }));
+  }
+  const transport = new GitHubTransport({ owner: 'fictional-owner', repo: 'fictional-private', token: TOKEN }, { fetch: strictFetch });
+  const result = await transport.test();
+  assert.notEqual(result.code, 'offline', '不能把调用方式错误报成没联网');
+});

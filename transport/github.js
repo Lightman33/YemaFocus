@@ -36,7 +36,9 @@ export class GitHubTransport {
       throw new TransportError('config', '当前环境无法连接，或网络超时设置不正确。');
     }
     this.#token = token;
-    this.#fetch = fetcher;
+    // 浏览器的 fetch 只能在没有调用者对象时使用；写成 this.#fetch(...) 直接调用，
+    // 会把本对象当成调用者，真实浏览器里每次都报“Illegal invocation”，被误报成“没联网”。
+    this.#fetch = (...args) => fetcher(...args);
     this.#base = API + '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo);
     this.#timeout = timeoutMs;
     this.#now = now;
