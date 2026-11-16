@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>连接诊断 · 野马</title>
+<link rel="stylesheet" href="./app/ui.css">
+</head>
+<body>
+<main id="main">
+<h1>连接诊断</h1>
+<p>这个页面只用来排查“手机连不上 GitHub”。它不读取也不发送你的任何数据和令牌，只用假的仓库名和假令牌向 api.github.com 发几个请求，把结果列在下面。</p>
+<p><button id="run" type="button">开始诊断</button></p>
+<pre id="out" aria-live="polite">点上面的按钮开始。</pre>
+<p>全部跑完后（约半分钟内），请把这一页截图发给 Claude。</p>
+</main>
+<script type="module" src="./diag.js"></script>
+</body>
+</html>
