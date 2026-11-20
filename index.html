@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="./app/review.css">
   <link rel="stylesheet" href="./app/habits.css">
   <link rel="stylesheet" href="./app/focus.css">
+  <link rel="stylesheet" href="./app/goals.css">
   <link rel="stylesheet" href="./app/sync.css">
   <script type="module" src="./app/app.js"></script>
 </head>
@@ -70,8 +71,8 @@
         <p id="focus-gate" class="caption">正在打开本机存储…</p>
         <p id="focus-error" class="error-text" role="alert" hidden></p>
         <div id="focus-fields" class="focus-fields">
-          <label for="focus-task">关联未完成任务（选填）</label>
-          <select id="focus-task" disabled><option value="">不关联任务</option></select>
+          <label for="focus-task">选择任务或长期事项（选填）</label>
+          <select id="focus-task" disabled><option value="">不选（自己写事项）</option></select>
           <div id="focus-custom">
             <label for="focus-item">事项（选填）</label>
             <input id="focus-item" type="text" placeholder="专注" disabled>
@@ -79,15 +80,15 @@
         </div>
         <div class="actions focus-actions">
           <button id="focus-start" class="primary" type="button" disabled>开始</button>
-          <button id="focus-pause" class="primary" type="button" hidden>暂停</button>
+          <button id="focus-fullscreen-open" class="primary" type="button" hidden>全屏专注</button>
+          <button id="focus-pause" class="secondary" type="button" hidden>暂停</button>
           <button id="focus-resume" class="primary" type="button" hidden>继续</button>
-          <button id="focus-early" class="secondary" type="button" hidden>提前结束</button>
           <button id="focus-abandon" class="danger-button" type="button" hidden>放弃</button>
+          <button id="focus-early" class="secondary" type="button" hidden>提前结束</button>
           <button id="focus-rest" class="primary" type="button" hidden>开始休息</button>
           <button id="focus-skip" class="secondary" type="button" hidden>跳过休息</button>
           <button id="focus-retry" class="primary" type="button" hidden>重试保存</button>
         </div>
-        <p class="caption focus-safari">iPhone 锁屏或切到别的应用时不会响铃，回来会自动记上。</p>
       </div>
       <details class="card focus-preferences">
         <summary>专注与休息时长</summary>
@@ -117,6 +118,20 @@
         <h2 id="focus-conflict-title" tabindex="-1">两边都改过的记录</h2>
         <div id="focus-conflict-items"></div>
       </div>
+      <details id="focus-iphone-guide" class="card focus-preferences focus-iphone-guide">
+        <summary>iPhone 防打扰设置</summary>
+        <ul>
+          <li>用「专注模式」静音通知，在「设置 → 专注模式」允许必须及时收到的联系人和 App。</li>
+          <li>在「设置 → 屏幕时间」限制容易分心的 App。</li>
+          <li>野马网页无法自动开启专注模式。可从控制中心手动开启，或在系统里设定时。</li>
+          <li>iPhone 锁屏或切到别的应用时不会响铃，回来会自动记上。</li>
+        </ul>
+      </details>
+    </section>
+
+    <section id="page-goals" aria-labelledby="title-goals" hidden>
+      <h1 id="title-goals" tabindex="-1">目标</h1>
+      <div id="goals-root" aria-busy="true">目标正在载入…</div>
     </section>
 
     <section id="page-review" aria-labelledby="title-review" hidden>
@@ -172,7 +187,7 @@
         <p class="caption">将清除当前浏览器中本站的状态、待上传快照、设置和令牌。仓库里的文件不会被删除。</p>
       </div>
       <div id="sim-controls" class="card" hidden><h2>模拟仓库（仅供验收）</h2><button id="sim-task" type="button" class="secondary">模拟电脑改一条任务并发布</button><button id="sim-review" type="button" class="secondary">模拟电脑改今天复盘的一个模块并发布</button><button id="sim-habit" type="button" class="secondary">模拟电脑打卡今天的阅读习惯并发布</button><button id="sim-network" type="button" class="secondary">模拟断网</button><p id="sim-result" role="status"></p></div>
-      <p class="version">版本 <span id="app-version">2.9.0-sync.6</span> · 本机优先</p>
+      <p class="version">版本 <span id="app-version">3.0.0</span> · 本机优先</p>
     </section>
   </main>
 
@@ -180,11 +195,32 @@
     <a href="#tasks" data-page="tasks"><span aria-hidden="true">✓</span>任务</a>
     <a href="#habits" data-page="habits"><span aria-hidden="true">○</span>习惯</a>
     <a href="#focus" data-page="focus"><span aria-hidden="true">◷</span>专注</a>
+    <a href="#goals" data-page="goals"><span aria-hidden="true">▦</span>目标</a>
     <a href="#review" data-page="review"><span aria-hidden="true">↗</span>复盘</a>
     <a href="#settings" data-page="settings"><span aria-hidden="true">⚙</span>设置</a>
   </nav>
 
   <div id="task-snackbar" class="task-snackbar" role="status" aria-live="polite" hidden><span id="task-snack-text"></span><button id="task-undo" type="button" hidden>撤销</button></div>
+  <dialog id="focus-fullscreen" class="focus-fullscreen" aria-label="全屏专注">
+    <div id="focus-fullscreen-time" class="focus-fullscreen-time" role="timer" tabindex="-1"></div>
+    <p id="focus-fullscreen-subject" class="focus-fullscreen-subject"></p>
+    <button id="focus-fullscreen-exit" class="focus-fullscreen-exit" type="button" aria-describedby="focus-fullscreen-exit-message">
+      <svg class="focus-fullscreen-ring" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <circle cx="16" cy="16" r="13" pathLength="100"></circle>
+        <circle class="focus-fullscreen-progress" cx="16" cy="16" r="13" pathLength="100"></circle>
+      </svg>
+      长按两秒退出全屏
+    </button>
+    <div class="focus-fullscreen-options">
+      <p id="focus-fullscreen-exit-message" class="focus-fullscreen-exit-message" role="status"></p>
+      <button id="focus-fullscreen-alt-exit" class="focus-fullscreen-alt-exit" type="button">使用按钮退出全屏</button>
+      <div id="focus-fullscreen-exit-actions" class="actions" hidden>
+        <button id="focus-fullscreen-exit-cancel" class="secondary" type="button">继续专注</button>
+        <button id="focus-fullscreen-exit-confirm" class="primary" type="button">确认退出全屏</button>
+      </div>
+    </div>
+    <p id="focus-fullscreen-wake" class="focus-fullscreen-wake" role="status" hidden></p>
+  </dialog>
   <dialog id="task-sheet" class="task-sheet" aria-labelledby="task-sheet-title">
     <div class="sheet-heading"><h2 id="task-sheet-title">任务详情</h2><button id="task-sheet-close" class="secondary" type="button" aria-label="关闭任务面板">关闭</button></div>
     <p id="task-save-status" class="caption" role="status" aria-live="polite"></p><div id="task-sheet-body"></div>

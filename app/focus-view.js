@@ -1,7 +1,16 @@
+import { FocusFullscreen } from './focus-fullscreen.js';
 import { todayFocus } from './focus-records.js';
 import { JOIN_TIP, timerReading, ZONE_TIP } from './focus-timer.js';
+import { lastDay } from './task-model.js';
 
 const actions = ['start', 'pause', 'resume', 'early', 'abandon', 'rest', 'skip', 'retry'];
+const stopLabels = { early: ['提前结束', '确认结束'], abandon: ['放弃', '再点一次确认放弃'] };
+const CONFIRM_MS = 3000;
+
+function sessionSubject(session) {
+  return session?.link ? session.link.slice(session.link.indexOf('|') + 1) : session?.subject || '';
+}
+const runningWork = session => session?.kind === 'work' && session.pausedAt === null && !session.ending;
 
 function clockText(milliseconds) {
   const seconds = Math.ceil(milliseconds / 1000);
@@ -14,12 +23,28 @@ export class FocusView {
     Object.assign(this, { document, source, timer, onNotice, playBell, armBell });
     this.$ = name => document.getElementById('focus-' + name);
     this.taskList = '';
+    this.fullscreen = new FocusFullscreen(document, this.$);
+    this.$('fullscreen-open').addEventListener('click', () => {
+      const session = this.timer.state.session;
+      if (!runningWork(session) || this.pending) return;
+      const { remaining } = timerReading(session, this.timer.now());
+      if (remaining > 0) {
+        this.clearConfirmation();
+        this.fullscreen.open(clockText(remaining), sessionSubject(session));
+      }
+    });
     this.error = '';
     this.unsub = source.subscribe(snapshot => { this.render(); this.renderRecords(snapshot); });
     for (const action of actions) this.$(action).addEventListener('click', () => {
+      if (this.fullscreen.active || this.pending || this.$(action).hidden || this.$(action).disabled) return;
+      if (stopLabels[action] && !this.confirmStop(action)) return;
+      this.clearConfirmation();
       if (['start', 'resume', 'rest'].includes(action)) armBell();
+      const selection = this.$('task').value;
       this.run(() => action === 'retry' ? timer.advance(true) : timer.act(action, {
-        taskId: this.$('task').value, subject: this.$('item').value
+        taskId: selection.startsWith('task:') ? selection.slice(5) : '',
+        longTermItem: selection.startsWith('item:') ? selection.slice(5) : '',
+        subject: this.$('item').value
       }), false, action);
     });
     this.$('task').addEventListener('change', () => this.render());
@@ -35,6 +60,7 @@ export class FocusView {
   }
 
   async entered() {
+    this.clearConfirmation();
     if (this.pending) await this.pending;
     await this.run(async () => {
       await this.timer.refresh();
@@ -46,7 +72,26 @@ export class FocusView {
   }
 
   stopTicks() { clearTimeout(this.tick); this.tick = null; }
-  destroy() { this.closed = true; this.stopTicks(); this.unsub(); }
+  destroy() { this.closed = true; this.stopTicks(); this.clearConfirmation(); this.fullscreen.destroy(); this.unsub(); }
+
+  clearConfirmation() {
+    if (!this.confirmation) return;
+    this.$(this.confirmation.action).textContent = stopLabels[this.confirmation.action][0];
+    clearTimeout(this.confirmationTimer);
+    this.confirmation = null;
+  }
+
+  confirmStop(action) {
+    const session = this.timer.state.session;
+    if (session?.kind !== 'work' || session.ending) return false;
+    const now = this.timer.now(), previous = this.confirmation;
+    if (previous?.action === action && previous.session === session.id && now < previous.until) return true;
+    this.clearConfirmation();
+    this.confirmation = { action, session: session.id, until: now + CONFIRM_MS };
+    this.$(action).textContent = stopLabels[action][1];
+    this.confirmationTimer = setTimeout(() => this.clearConfirmation(), CONFIRM_MS);
+    return false;
+  }
 
   async run(operation, sound = false, action = '') {
     if (this.pending || this.closed) return this.pending;
@@ -74,7 +119,11 @@ export class FocusView {
     const session = this.timer.state.session;
     const visible = () => !this.$('clock').parentNode.hidden;
     const dayChanged = () => {
-      if (visible() && this.source.snapshot().today !== this.today) this.renderRecords(this.source.snapshot());
+      const snapshot = this.source.snapshot();
+      if (visible() && snapshot.today !== this.today) {
+        this.render();
+        this.renderRecords(snapshot);
+      }
     };
     if (!session || session.ending || session.pausedAt !== null) {
       if (visible()) this.tick = setTimeout(() => { dayChanged(); this.schedule(); }, 60000 - this.timer.now() % 60000);
@@ -97,20 +146,30 @@ export class FocusView {
   renderClock() {
     const { session, workMinutes, breakMinutes, offer } = this.timer.state;
     const value = session ? timerReading(session, this.timer.now()).remaining : (offer ? breakMinutes : workMinutes) * 60000;
-    this.$('time').textContent = clockText(value);
+    const clock = clockText(value);
+    this.$('time').textContent = clock;
+    if (this.fullscreen.active) this.fullscreen.update(clock, sessionSubject(session));
   }
 
   render() {
     this.onNotice(this.timer.notice);
-    if (this.$('clock').parentNode.hidden) return;
-    const snapshot = this.source.snapshot(), { session, offer } = this.timer.state;
+    const { session, offer } = this.timer.state;
+    const full = runningWork(session);
+    if (this.confirmation && (this.confirmation.session !== session?.id || session?.ending || this.$('clock').parentNode.hidden)) this.clearConfirmation();
+    const closeFullscreen = this.fullscreen.active && !full && !(session?.ending && this.pending);
+    if (this.$('clock').parentNode.hidden) {
+      if (closeFullscreen) this.fullscreen.close();
+      else if (this.fullscreen.active) this.renderClock();
+      return;
+    }
+    const snapshot = this.source.snapshot();
     const paused = session?.pausedAt != null, ending = Boolean(session?.ending), work = session?.kind === 'work';
     const gate = !this.ready ? '正在打开本机存储…' : !snapshot.joined ? JOIN_TIP : !snapshot.timeZone ? ZONE_TIP : '';
     const occupied = Boolean(session) || offer;
     this.$('clock').setAttribute('aria-busy', String(!this.ready));
     this.$('phase').textContent = ending ? '正在保存记录' : session ? (work ? (paused ? '专注已暂停' : '专注中') : '休息中') : offer ? '可以休息了' : '番茄钟';
     this.renderClock();
-    this.$('subject').textContent = session?.link ? session.link.slice(session.link.indexOf('|') + 1) : session?.subject || '';
+    this.$('subject').textContent = sessionSubject(session);
     this.$('subject').hidden = !session;
     this.$('gate').textContent = gate;
     this.$('gate').hidden = !gate;
@@ -131,18 +190,61 @@ export class FocusView {
       this.$(action).hidden = !visible[action];
       this.$(action).disabled = Boolean(this.pending || gate && (action === 'start' || action === 'rest' || action === 'skip' && !session));
     }
+    this.$('fullscreen-open').hidden = !full;
+    this.$('fullscreen-open').disabled = Boolean(this.pending);
+    if (closeFullscreen) {
+      this.fullscreen.close();
+      actions.map(action => this.$(action)).find(button => !button.hidden && !button.disabled)?.focus({ preventScroll: true });
+    }
   }
 
   renderTasks(snapshot) {
-    const tasks = (snapshot.planner.tasks || []).filter(t => !t.done && !t.trashedAt)
-      .map(t => [t.id, t.title]).sort((a, b) => a[1].localeCompare(b[1], 'zh-CN'));
-    const key = JSON.stringify(tasks), select = this.$('task');
+    const today = [], others = [];
+    for (const task of snapshot.planner.tasks || []) {
+      if (task.done || task.trashedAt) continue;
+      const scheduledToday = snapshot.today && task.date && task.date <= snapshot.today && lastDay(task) >= snapshot.today;
+      (scheduledToday ? today : others).push([task.id, task.title]);
+    }
+    for (const group of [today, others]) group.sort((a, b) => a[1].localeCompare(b[1], 'zh-CN'));
+    const items = snapshot.longTermItems ?? null;
+    const key = JSON.stringify([today, others, items]), select = this.$('task');
     if (this.taskList !== key) {
       const selected = select.value;
-      select.replaceChildren(...[['', '不关联任务'], ...tasks].map(([id, title]) => {
-        const option = this.document.createElement('option'); option.value = id; option.textContent = title; return option;
-      }));
-      select.value = tasks.some(([id]) => id === selected) ? selected : '';
+      const choices = new Set(['']);
+      const option = (value, text, disabled = false) => {
+        const node = this.document.createElement('option');
+        node.value = value;
+        node.textContent = text;
+        node.disabled = disabled;
+        if (!disabled) choices.add(value);
+        return node;
+      };
+      const group = (label, options) => {
+        const node = this.document.createElement('optgroup');
+        node.setAttribute('label', label);
+        node.append(...options);
+        return node;
+      };
+      const groups = new Map();
+      for (const item of items || []) {
+        const slash = item.indexOf('/');
+        const category = slash < 0 ? '' : item.slice(0, slash);
+        if (!groups.has(category)) groups.set(category, []);
+        groups.get(category).push(option('item:' + item, item.slice(slash + 1)));
+      }
+      const children = [option('', '不选（自己写事项）')];
+      const taskOptions = tasks => tasks.map(([id, title]) => option('task:' + id, title));
+      if (today.length) children.push(group('今天的任务', taskOptions(today)));
+      if (others.length) children.push(group(today.length ? '其他未完成任务' : '未完成任务', taskOptions(others)));
+      for (const [category, options] of groups) {
+        if (category) children.push(group('长期事项 · ' + category, options));
+      }
+      if (groups.has('')) children.push(group('长期事项 · 无大类', groups.get('')));
+      if (!groups.size) children.push(group('长期事项', [
+        option('', items === null ? '电脑升级到 v3.0 后显示' : '暂无长期事项', true)
+      ]));
+      select.replaceChildren(...children);
+      select.value = choices.has(selected) ? selected : '';
       this.taskList = key;
     }
     this.$('custom').hidden = Boolean(select.value);

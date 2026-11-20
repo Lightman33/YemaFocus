@@ -1,9 +1,36 @@
-/* 沿用外壳已校核的明暗配色；未排程格减淡底色，不降低文字对比度。 */
-#page-habits h1 { margin-bottom: 8px; font-size: 1.5rem; }
-.habit-item { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px; margin: 8px 0 12px; }
-.habit-row { display: flex; gap: 8px; align-items: center; }
-.habit-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border); background: #22C55E; }
-/* 颜色编号沿用 PlannerData.ProjectColorHex；颜色点不承担文字或状态提示。 */
+/* 日期表头与所有卡片共用七列，圆点只占点击区的中央。 */
+#page-habits > h1 { margin: 0 0 6px; font-size: 1.25rem; }
+main:has(#page-habits:not([hidden])) { scroll-padding-top: 52px; }
+#habits-root {
+  --habit-today-bg: #E2EFE8;
+  --habit-readonly: #77857D;
+  --habit-week-gap: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  #habits-root { --habit-today-bg: #24463D; --habit-readonly: #8DA6A2; }
+}
+.habit-week-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; text-align: center; }
+.habit-week-nav button:first-child { justify-self: start; }
+.habit-week-nav button:nth-child(3) { justify-self: end; }
+.habit-week-range { font-weight: 650; font-variant-numeric: tabular-nums; }
+.habit-week-back { grid-column: 1 / -1; justify-self: center; }
+.habit-link {
+  min-width: 44px; min-height: 44px; padding: 4px 8px;
+  background: transparent; color: var(--accent); font-size: .875rem;
+}
+.habit-link:disabled { opacity: 1; color: var(--caption); font-weight: 400; }
+.habit-days { display: grid; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: var(--habit-week-gap); }
+.habit-week-days { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.habit-week-day {
+  display: grid; align-content: center; justify-items: center; min-height: 44px;
+  border-radius: 8px; font-size: .75rem; line-height: 1.35; color: var(--caption);
+  font-variant-numeric: tabular-nums;
+}
+.habit-week-day.is-today { color: var(--ink); font-weight: 700; }
+.habit-item { min-width: 0; background: var(--surface); border-radius: 12px; margin-bottom: 6px; }
+.habit-row { display: flex; gap: 8px; align-items: center; min-height: 36px; padding: 4px 10px; }
+.habit-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #22C55E; }
+/* 颜色编号沿用 PlannerData.ProjectColorHex；颜色点只用于装饰。 */
 .habit-color-1 { background: #2E9BFF; }
 .habit-color-2 { background: #14B8A6; }
 .habit-color-3 { background: #8B5CF6; }
@@ -13,31 +40,55 @@
 .habit-color-7 { background: #EF4444; }
 .habit-color-8 { background: #6366F1; }
 .habit-color-9 { background: #64748B; }
-.habit-text { flex: 1; min-width: 0; }
-.habit-name { font-size: 1rem; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
-.habit-name-button { width: 100%; min-height: 44px; min-width: 44px; padding: 0; background: transparent; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
-.habit-text p { margin: 2px 0; overflow-wrap: anywhere; }
-.habit-days { display: grid; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 2px; margin-top: 10px; }
-.habit-check { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 44px; min-height: 66px; padding: 4px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--hover); color: var(--ink); }
-.habit-check.is-unscheduled { background: var(--surface); border-style: dashed; color: var(--caption); }
-.habit-check.is-checked { background: var(--accent); color: var(--button-ink); border-style: solid; }
-.habit-check.has-conflict { border: 2px solid var(--danger); color: var(--danger); background: var(--surface); }
-.habit-check:disabled { opacity: 1; }
-.habit-today { flex: none; width: 66px; }
-.habit-check-symbol { font-size: 1.25rem; line-height: 1.3; }
-.habit-day-label, .habit-day-date { font-size: .75rem; line-height: 1.4; }
+.habit-heading { flex: 1; min-width: 0; }
+.habit-name { font-size: 1rem; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+.habit-frequency { margin: 0; font-size: .8125rem; overflow-wrap: anywhere; }
+.habit-progress { flex: none; font-variant-numeric: tabular-nums; }
+.habit-check {
+  position: relative; display: grid; place-items: center; min-width: 44px; min-height: 44px;
+  padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--accent);
+}
+.habit-check.is-unscheduled { color: var(--caption); }
+.habit-check:disabled { color: var(--habit-readonly); opacity: 1; }
+.habit-days .is-today { background: var(--habit-today-bg); }
+.habit-check:focus-visible { outline-offset: -2px; }
+.habit-check-symbol {
+  display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid currentColor;
+  border-radius: 50%; font-size: .875rem; line-height: 1;
+}
+.habit-check.is-unscheduled .habit-check-symbol { border-style: dashed; }
+.habit-check.is-outside-dates:not(.is-checked):not(.has-conflict) .habit-check-symbol {
+  width: 8px; height: 8px; border: 0; background: var(--habit-readonly);
+}
+.habit-check.is-checked:not(.has-conflict) .habit-check-symbol { background: var(--accent); border: 1px solid var(--accent); color: var(--button-ink); }
+.habit-check.is-checked:not(.has-conflict):disabled .habit-check-symbol { background: var(--habit-readonly); border-color: var(--habit-readonly); }
+.habit-check.has-conflict .habit-check-symbol { background: transparent; color: var(--danger); border: 2px solid currentColor; }
+.habit-journal-marker {
+  position: absolute; top: 7px; left: calc(50% + 10px);
+  width: 5px; height: 5px; border-radius: 50%; background: var(--caption);
+}
+.habit-journal-write { flex: none; }
+.habit-journal-toggle { color: var(--caption); margin-inline-start: 2px; }
 .habit-other summary { cursor: pointer; min-height: 44px; padding: 8px 0; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .habit-footer { margin: 18px 0 8px; }
-.habit-journal-list { margin-top: 12px; border-top: 1px solid var(--border); }
-.habit-journal-entry { padding: 8px 0; border-bottom: 1px solid var(--border); }
-.habit-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.habit-journal-list { margin: 0 10px; padding: 4px 0; border-top: 1px solid var(--line); }
+.habit-journal-entry { display: block; width: 100%; padding: 6px 0; }
+button.habit-journal-entry { text-align: start; color: var(--ink); background: transparent; font-weight: 400; border-radius: 0; }
+.habit-journal-entry + .habit-journal-entry { border-top: 1px solid var(--line); }
+.habit-note { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.habit-photo-count { display: block; }
 .habit-journal-dialog { width: min(90vw, 480px); }
 .habit-journal-dialog h2 { overflow-wrap: anywhere; }
-.habit-journal-dialog textarea { width: 100%; min-width: 0; min-height: 100px; padding: 10px; font: inherit; font-size: max(1rem, 16px); color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.habit-journal-dialog input, .habit-journal-dialog textarea { font-size: max(1rem, 16px); }
 .habit-journal-dialog button { min-width: 44px; min-height: 44px; }
 #habits-root .conflict-card { min-width: 0; padding: 8px; }
 #habits-root .conflict-card button { white-space: normal; overflow-wrap: anywhere; }
+@media (hover: hover) {
+  .habit-check:not(:disabled):hover, .habit-link:not(:disabled):hover, button.habit-journal-entry:hover { background: var(--hover); }
+}
 @media (max-width: 359px) {
-  .habit-item { padding: 4px; }
-  .habit-days { grid-template-columns: repeat(4, minmax(44px, 1fr)); gap: 4px; }
+  main:has(#page-habits:not([hidden])) {
+    padding-inline: max(6px, env(safe-area-inset-left, 0px)) max(6px, env(safe-area-inset-right, 0px));
+  }
+  #habits-root { --habit-week-gap: 0px; }
 }

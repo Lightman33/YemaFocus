@@ -44,15 +44,19 @@ test('不能撤销该格子之后的新编辑；写失败不发布假成功，�
   await assert.rejects(receipt.undo(), /新改动/); assert.equal(notified, 3);
   assert.deepEqual((await savedPlanner(f.store)).habits[0].checks, [TODAY]);
 });
-test('未加入、未知时区、延后加载、归档、超过补打窗口都不能写；非计划日期仍能打', async () => {
+test('未加入、未知时区、延后加载、归档及只读日期都不能写；开始与结束当天即使非计划日仍能打', async () => {
   const f = await fixture({ joined: false }); await assert.rejects(f.actions.toggle('h', TODAY), /第一次同步/);
   const loading = await fixture({ tasksFirst: true }); await assert.rejects(loading.actions.toggle('h', TODAY));
   const zone = await fixture({ state: updateUnit(plannerToState(planner(), 'computer'), unitKey('setting', 'TimeZone'), 'computer', 'Unknown fiction zone') });
   await assert.rejects(zone.actions.toggle('h', TODAY), /软件时区/);
   const archived = await fixture({ state: plannerToState(planner([habit({ archived: true })]), 'computer') }); await assert.rejects(archived.actions.toggle('h', TODAY), /归档/);
-  const g = await fixture({ state: plannerToState(planner([habit({ kind: 'Weekdays', weekMask: 1, start: '2026-11-12', end: '2026-11-12' })]), 'computer') });
-  for (const day of ['2026-11-06', '2026-11-14', '2026-02-30']) await assert.rejects(g.actions.toggle('h', day), /过去六天/);
-  await g.actions.toggle('h', '2026-11-07'); await g.actions.toggle('h', TODAY); assert.deepEqual(row(g.source).checks, ['2026-11-07', TODAY]);
+  const g = await fixture({ state: plannerToState(planner([habit({ kind: 'Weekdays', weekMask: 1, start: '2026-11-08', end: '2026-11-12' })]), 'computer') });
+  for (const [day, message] of [['2026-11-07', /尚未开始/], [TODAY, /已经结束/], ['2026-11-14', /未来/], ['2026-02-30', /无效/]]) {
+    await assert.rejects(g.actions.toggle('h', day), message);
+  }
+  const old = await fixture(); await old.actions.toggle('h', '2026-11-06'); // v3.0：照电脑，早于六天也可补打
+  await g.actions.toggle('h', '2026-11-08'); await g.actions.toggle('h', '2026-11-12');
+  assert.deepEqual(row(g.source).checks, ['2026-11-08', '2026-11-12']);
 });
 test('同设备多个来源同时打不同日期，首个 checkEdits 缺省也不能互相覆盖', async () => {
   const f = await fixture({ state: plannerToState({ habits: [{ id: 'h', name: '虚构', kind: 'Daily', start: '2026-01-01', checks: [] }] }, 'computer') });

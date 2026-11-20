@@ -21,20 +21,42 @@ export function frequencyText(habit) {
   return '每天';
 }
 export function checksInWeek(habit, monday) {
-  return Array.from({ length: 7 }, (_, i) => addDays(monday, i)).filter(day => isChecked(habit, day)).length;
+  return weekDays(monday).filter(day => isChecked(habit, day)).length;
 }
-export function weekProgress(habit, today) {
-  const monday = weekStart(today);
-  // 与 HabitViews.DrawTrend 一致：全周实际打卡数；非周次数习惯以 Scheduled 的全周天数作目标。
+// PlannerModel.cs:908–912 周一为起点。日期已经按软件时区取整，后续只做日期运算。
+export function weekDays(day) {
+  const monday = weekStart(day);
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
+export function weekProgress(habit, day, today = day) {
+  const monday = weekStart(day);
+  // HabitViews.cs:342–346 统计全周实际打卡数，目标取周次数或全周 Scheduled 天数。
   const target = habit.kind === 'TimesPerWeek' ? habit.perWeek ?? 3 :
-    Array.from({ length: 7 }, (_, i) => addDays(monday, i)).filter(day => scheduled(habit, day)).length;
+    weekDays(monday).filter(date => scheduled(habit, date)).length;
   const done = checksInWeek(habit, monday);
-  return { done, target, text: '本周 ' + done + '/' + target };
+  return { done, target, text: (monday === weekStart(today) ? '本周 ' : '当周 ') + done + '/' + target };
 }
-export function recentDays(today) { return Array.from({ length: 7 }, (_, i) => addDays(today, i - 6)); }
-export function editableDay(day, today) { return validDay(day) && validDay(today) && day >= addDays(today, -6) && day <= today; }
+export function checkDayIssue(habit, day, today) {
+  if (!validDay(day) || !validDay(today)) return '打卡日期无效';
+  // HabitViews.cs:105–115 周卡允许非排程日，排除未来和开始前；PlannerForm.cs:589–595 再检查未来。
+  if (day > today) return '未来日期，暂不能打卡';
+  if (habit.start && day < habit.start) return '习惯尚未开始';
+  // PlannerModel.cs:512 结束日含当天。按 T40 要求，结束后只读。
+  if (habit.end && day > habit.end) return '习惯已经结束';
+  // HabitViews.cs:329 的电脑月历可补更早的日期，没有天数上限。v3.0 起手机照电脑：开始日至今天都可补打（Claude 11-20 定）。
+  return '';
+}
+// HabitJournal.cs:212–215,278；PlannerModel.cs:582。结束日期不限制写感想。
+export function canJournal(habit, day, today) {
+  return validDay(day) && validDay(today) && day <= today && (!habit.start || day >= habit.start);
+}
+export function journalPhotoCount(entry) { return Array.isArray(entry?.photos) ? entry.photos.length : 0; }
+export function hasJournalEntry(entry) { return Boolean((typeof entry?.note === 'string' && entry.note.trim()) || journalPhotoCount(entry)); }
+export function activeHabits(habits) {
+  return (habits || []).filter(h => !h.archived).sort((a, b) => (a.order || 0) - (b.order || 0) || String(a.id).localeCompare(String(b.id), 'en'));
+}
 export function groupHabits(habits, today) {
-  const active = (habits || []).filter(h => !h.archived).slice().sort((a, b) => (a.order || 0) - (b.order || 0) || String(a.id).localeCompare(String(b.id), 'en'));
+  const active = activeHabits(habits);
   return { due: active.filter(h => inPlan(h, today)), other: active.filter(h => !inPlan(h, today)) };
 }
 export function habitConflicts(snapshot, id) {

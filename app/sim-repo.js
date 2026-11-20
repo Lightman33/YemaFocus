@@ -5,7 +5,8 @@ import { SyncState } from './syncstate.js';
 import { createEngine } from '../sync/engine.js';
 import { createDataSource, wallTime } from './datasource.js';
 import { createDemoReviewData } from './demo-review-data.js';
-import { plannerToState } from '../sync/convert.js';
+import { plannerToState } from './goal-sync.js';
+import { addDemoGoals, seedDemoFocusItems } from './demo-data.js';
 import { updateUnit } from '../sync/edit.js';
 import { encodeLegacy, unitKey } from '../sync/canonical.js';
 import { ReviewText } from './review-model.js';
@@ -15,7 +16,8 @@ export const SIM_SETTINGS = { owner: 'fictional-owner', repo: 'sim-data', device
 export const SIM_TOKEN = 'fictional-simulation-token';
 export function reviewSeedState(today, now, device = 'sim-computer') {
   const data = createDemoReviewData(today);
-  let state = plannerToState(data.planner, device, now);
+  addDemoGoals(data.planner, today);
+  let state = seedDemoFocusItems(plannerToState(data.planner, device, now), device, now);
   for (const [key, value] of Object.entries(data.settings)) state = updateUnit(state, unitKey('setting', key), device, encodeLegacy(value), { updatedAt: now });
   for (const r of data.records) state = updateUnit(state, unitKey('record', r.id), device, encodeLegacy({ day: r.day, columns: r.columns }), { updatedAt: now });
   return state;

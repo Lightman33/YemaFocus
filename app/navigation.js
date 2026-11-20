@@ -1,4 +1,4 @@
-export const PAGES = { tasks: '任务', habits: '习惯', focus: '专注', review: '复盘', settings: '设置' };
+export const PAGES = { tasks: '任务', habits: '习惯', focus: '专注', goals: '目标', review: '复盘', settings: '设置' };
 /** 独立于 DOM 的标签与滚动位置状态；hashchange 同时处理点击和浏览器返回。 */
 export class Navigation {
   constructor(initial = 'tasks') {

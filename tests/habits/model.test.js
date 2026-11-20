@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scheduled, frequencyText, checksInWeek, weekProgress, groupHabits, recentDays, inPlan, weekIndex, editableDay } from '../../app/habit-model.js';
+import { scheduled, frequencyText, checksInWeek, weekProgress, groupHabits, weekDays, inPlan, weekIndex, checkDayIssue } from '../../app/habit-model.js';
 import { habit, TODAY } from './helpers.js';
 
 test('Habit.Scheduled / FreqText：每天和缺省类型', () => {
   for (const kind of ['Daily', undefined, 'unknown']) {
     const h = habit({ kind });
-    for (const day of recentDays(TODAY)) assert.equal(scheduled(h, day), true);
+    for (const day of weekDays(TODAY)) assert.equal(scheduled(h, day), true);
     assert.equal(frequencyText(h), '每天'); assert.equal(weekProgress(h, TODAY).target, 7);
   }
 });
@@ -42,9 +42,22 @@ test('HabitSummary.Compute：归档不参与；不用打卡组包含未来开始
   const groups = groupHabits(habits, TODAY);
   assert.deepEqual(groups.due.map(h => h.id), ['d']); assert.deepEqual(groups.other.map(h => h.id), ['b', 'c', 'e']);
 });
-test('最近七天跨月、跨年、闰年；仅今天与过去六天可补打，含非计划日期', () => {
-  assert.deepEqual(recentDays('2028-03-02'), ['2028-02-25', '2028-02-26', '2028-02-27', '2028-02-28', '2028-02-29', '2028-03-01', '2028-03-02']);
-  assert.equal(recentDays('2027-01-02')[0], '2026-12-27');
-  for (const day of recentDays(TODAY)) assert.equal(editableDay(day, TODAY), true);
-  for (const day of ['2026-11-06', '2026-11-14', '2026-02-30', 'no-day']) assert.equal(editableDay(day, TODAY), false);
+test('PlannerData.WeekStart 对照：一周中任一天都取同一周一，覆盖闰年跨月与跨年周日', () => {
+  const leapWeek = ['2028-02-28', '2028-02-29', '2028-03-01', '2028-03-02', '2028-03-03', '2028-03-04', '2028-03-05'];
+  for (const day of leapWeek) assert.deepEqual(weekDays(day), leapWeek);
+  assert.equal(weekDays('2027-01-03')[0], '2026-12-28');
+  assert.equal(weekDays('2027-01-03')[6], '2027-01-03');
+  assert.equal(weekDays('2027-01-04')[0], '2027-01-04');
+});
+test('打卡边界：对照电脑周卡的未来、开始前和非排程日，加上手机结束日与六天窗口', () => {
+  const h = habit({ start: '2026-11-08', end: '2026-11-12', kind: 'Weekdays', weekMask: 1 });
+  assert.match(checkDayIssue(h, '2026-11-14', TODAY), /未来/);
+  assert.match(checkDayIssue(h, '2026-11-07', TODAY), /尚未开始/);
+  assert.equal(checkDayIssue(h, '2026-11-08', TODAY), '');
+  assert.equal(checkDayIssue(h, '2026-11-12', TODAY), '');
+  assert.match(checkDayIssue(h, TODAY, TODAY), /结束/);
+  assert.equal(checkDayIssue(habit(), TODAY, TODAY), '');
+  assert.equal(checkDayIssue(habit(), '2026-11-07', TODAY), '');
+  assert.equal(checkDayIssue(habit(), '2026-11-06', TODAY), ''); // v3.0：照电脑，无天数上限
+  assert.match(checkDayIssue(h, '2026-02-30', TODAY), /无效/);
 });

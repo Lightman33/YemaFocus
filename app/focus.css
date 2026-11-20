@@ -1,3 +1,4 @@
+#page-focus > h1 { margin: 0 0 6px; font-size: 1.25rem; }
 .focus-clock { text-align: center; }
 .focus-phase { color: var(--accent); font-weight: 700; }
 .focus-time { font-size: clamp(3.5rem, 16vw, 6.5rem); line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -8,13 +9,18 @@
 .focus-fields { text-align: left; }
 .focus-fields label, .focus-preferences label { margin-top: 10px; }
 .focus-fields select { width: 100%; min-height: 48px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: max(1rem, 16px); }
-.focus-actions { margin-top: 16px; gap: 8px; }
-.focus-actions > button { flex-basis: 110px; }
-.focus-safari { margin-bottom: 0; }
+.focus-actions { margin-top: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 8px; }
+.focus-actions > button { padding-inline: 6px; }
+#focus-start, #focus-retry, #focus-resume, #focus-rest[hidden] + #focus-skip { grid-column: 1 / -1; }
+#focus-resume { grid-row: 1; }
+#focus-fullscreen-open, #focus-abandon { grid-column: 1; }
+#focus-pause, #focus-early { grid-column: 2; }
+#focus-abandon, #focus-early { grid-row: 2; }
 .focus-preferences { padding-top: 0; padding-bottom: 0; }
 .focus-preferences summary { min-height: 48px; padding: 10px 0; cursor: pointer; font-weight: 600; }
 .focus-preferences form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-bottom: 14px; }
 .focus-preferences button, #focus-preferences-message { grid-column: 1 / -1; }
+.focus-iphone-guide ul { margin: 0 0 14px; padding-inline-start: 1.25em; color: var(--caption); }
 .focus-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .focus-metrics div { background: var(--hover); border-radius: 12px; padding: 10px 12px; }
 .focus-metrics dt { color: var(--caption); }
@@ -23,4 +29,40 @@
 .focus-recent li { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .focus-recent small { grid-column: 2; color: var(--caption); }
 .focus-conflicts .conflict-value { white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (max-width: 375px) { .focus-clock, .focus-today { padding: 16px; } }
+@media (max-width: 430px) {
+  .focus-clock, .focus-today { padding: 16px; margin-bottom: 12px; }
+  .focus-preferences { padding-inline: 16px; margin-bottom: 12px; }
+}
+
+.focus-fullscreen {
+  position: fixed; inset: 0; margin: 0; width: 100%; height: 100dvh; max-width: none; max-height: none;
+  border: 0; border-radius: 0; color: #ecf6f1; background: #080f10; color-scheme: dark;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  text-align: center; overscroll-behavior: contain;
+}
+.focus-fullscreen[open] { display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 2.7vh, 20px); }
+.focus-fullscreen-time {
+  margin-top: auto; font-size: clamp(3rem, min(19vw, 24vh), 9rem);
+  line-height: 1.05; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.focus-fullscreen-subject {
+  margin: 0; max-width: 42ch; font-size: clamp(1rem, 4vw, 1.5rem); color: #c7d9d2;
+  overflow-wrap: anywhere;
+}
+.focus-fullscreen-exit {
+  display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;
+  background: #152323; color: #ecf6f1; border-color: #718983;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.focus-fullscreen :focus-visible { outline: 3px solid #77e5ba; outline-offset: 3px; }
+.focus-fullscreen-ring { flex: none; transform: rotate(-90deg); fill: none; stroke: #718983; stroke-width: 2.5; }
+.focus-fullscreen-progress { stroke: #77e5ba; stroke-dasharray: 100; stroke-dashoffset: 100; }
+.focus-fullscreen-exit[data-holding] .focus-fullscreen-progress { stroke-dashoffset: 0; transition: stroke-dashoffset 2s linear; }
+.focus-fullscreen-options { width: min(100%, 26rem); margin-bottom: auto; }
+.focus-fullscreen-alt-exit { background: transparent; color: #c7d9d2; font-size: .875rem; }
+.focus-fullscreen-exit-message { min-height: 1.65em; margin: 0; color: #c7d9d2; }
+.focus-fullscreen-options .secondary { background: #152323; color: #ecf6f1; border-color: #718983; }
+.focus-fullscreen-options .primary { background: #77e5ba; color: #080f10; }
+@media (prefers-reduced-motion: reduce) { .focus-fullscreen-ring { display: none; } }
+.focus-fullscreen-wake { margin: 0; max-width: 36ch; color: #f7d29d; font-size: 1rem; }

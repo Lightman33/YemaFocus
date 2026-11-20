@@ -1,5 +1,5 @@
 /* 每次外壳发布都递增 VERSION。缓存只含此清单，绝不缓存 GitHub 响应或令牌。 */
-const VERSION = '2.9.0-sync.6';
+const VERSION = '3.0.0';
 const PREFIX = 'yema-shell:' + self.registration.scope + ':';
 const CACHE = PREFIX + VERSION;
 const SHELL_FILES = [
@@ -25,10 +25,18 @@ const SHELL_FILES = [
   './app/habit-journal.js',
   './app/habits-view.js',
   './app/habits.css',
+  './app/focus-items.js',
+  './app/focus-fullscreen.js',
   './app/focus-records.js',
   './app/focus-timer.js',
   './app/focus-view.js',
   './app/focus.css',
+  './app/goal-sync.js',
+  './app/goal-periods.js',
+  './app/goals-model.js',
+  './app/goals-actions.js',
+  './app/goals-view.js',
+  './app/goals.css',
   './app/review-model.js',
   './app/review-actions.js',
   './app/review-view.js',

@@ -1,6 +1,7 @@
 // 业务操作只通过 datasource.change；不读写同步状态。
 import { copy, parseQuick, repeating, REPEAT_READONLY, SERIES_READONLY, validDay, weekStart, lastDay, addDays, parseTime, normalizeTitle } from './task-model.js';
 import { DataError, wallTime } from './datasource.js';
+import { goalSpan } from './goal-periods.js';
 
 export function newId() {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
@@ -104,7 +105,7 @@ export class TaskActions {
       const t = requireTask(planner, id);
       if (t.done && t.series) throw new DataError(SERIES_READONLY);
       if (t.done && t.abandoned) { restoreTask(t, now); return; }
-      if (t.done) { t.done = false; t.doneAt = null; if (Object.keys(t).some(key => !['id', 'project', 'title', 'notes', 'date', 'weekOf', 'time', 'endTime', 'remindTime', 'remindOffset', 'remindedAt', 'remind', 'remindedOn', 'priority', 'done', 'doneAt', 'created', 'series', 'order', 'updated', 'steps', 'repeat'].includes(key))) t.abandoned = false; }
+      if (t.done) { t.done = false; t.doneAt = null; if (Object.keys(t).some(key => !['id', 'project', 'title', 'notes', 'date', 'weekOf', 'time', 'endTime', 'remindTime', 'remindOffset', 'remindedAt', 'remind', 'remindedOn', 'priority', 'done', 'doneAt', 'created', 'series', 'goalId', 'order', 'updated', 'steps', 'repeat'].includes(key))) t.abandoned = false; }
       else { t.done = true; t.doneAt = wallTime(now, snapshot.timeZone); }
     });
   }
@@ -138,6 +139,14 @@ export class TaskActions {
       // PlannerModel.cs SyncReminder；PlannerForm.cs DatePopup.Apply：改时间后清空已提醒标记。
       if (timeChanged) { syncReminder(task); task.remindedAt = ''; }
     }, options);
+  }
+  setGoal(id, goalId, options = {}) {
+    return this.source.change(this.description('已保存关联目标', id), p => {
+      const task = (p.tasks || []).find(t => t.id === id);
+      if (!task || task.trashedAt) throw new DataError('任务已经不在列表里，请重新查看。');
+      if (goalId && !(p.goals || []).some(goal => goal.id === goalId && goalSpan(goal) === 1)) throw new DataError('请选择一个仍存在的年度目标。');
+      if (goalId) task.goalId = goalId; else delete task.goalId;
+    }, { ...options, undoable: false });
   }
   addSteps(id, text) {
     const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean), ids = lines.map(() => this.id());

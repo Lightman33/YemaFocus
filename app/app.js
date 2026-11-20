@@ -13,6 +13,7 @@ import { TasksView } from './tasks-view.js';
 import { HabitsView } from './habits-view.js';
 import { FocusTimer } from './focus-timer.js';
 import { FocusView, focusBell } from './focus-view.js';
+import { GoalsView } from './goals-view.js';
 import { mountReview } from './review-view.js';
 
 const $ = id => document.getElementById(id);
@@ -20,7 +21,7 @@ export const syncState = new SyncState();
 const demoMode = /^#demo(?:\/|$)/.test(location.hash), simMode = /^#sim(?:\/|$)/.test(location.hash);
 const prefix = demoMode ? 'demo/' : simMode ? 'sim/' : '';
 export let dataSource, controller;
-let tasksView, habitsView, focusView, reviewView, sim, reviewLoading, reviewUI = {}, appDisposed = false;
+let tasksView, habitsView, focusView, goalsView, reviewView, sim, reviewLoading, reviewUI = {}, appDisposed = false;
 let store, saved, busy = false, storageReady = false, dirty = false, registration, updating = false;
 let navigationQueue = Promise.resolve();
 const main = $('main');
@@ -42,6 +43,8 @@ for (const link of document.querySelectorAll('[data-page]')) {
 function renderPage(page, focus = true) {
   const previous = navigation.current;
   const target = navigation.move(page, main.scrollTop);
+  // 提示已在专注页看过（或就是在专注页上点的放弃）：离开专注页即清掉，不再挂在别的页面顶上
+  if (previous === 'focus' && target.page !== 'focus' && focusView && focusView.timer.notice) focusView.timer.notice = '';
   for (const name of Object.keys(PAGES)) $('page-' + name).hidden = name !== target.page;
   for (const link of document.querySelectorAll('[data-page]')) {
     if (link.dataset.page === target.page) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
@@ -51,9 +54,10 @@ function renderPage(page, focus = true) {
   main.scrollTop = target.scrollTop;
   if (tasksView && target.page === 'tasks' && previous !== 'tasks') tasksView.entered();
   if (target.page === 'review') reviewView?.refresh();
+  if (target.page === 'goals') goalsView?.enter();
 }
-export async function disposeApp() { appDisposed = true; tasksView?.destroy(); habitsView?.destroy(); focusView?.destroy(); reviewView?.destroy(); await controller?.dispose(); sim?.dispose(); }
-export async function flushViews() { await tasksView?.flush(); await habitsView?.flush(); await focusView?.pending; await reviewView?.flush(); }
+export async function disposeApp() { appDisposed = true; tasksView?.destroy(); habitsView?.destroy(); focusView?.destroy(); goalsView?.destroy(); reviewView?.destroy(); await controller?.dispose(); sim?.dispose(); }
+export async function flushViews() { await tasksView?.flush(); await habitsView?.flush(); await focusView?.pending; await goalsView?.flush(); await reviewView?.flush(); }
 export function changePage(page, fromHash = false) {
   navigationQueue = navigationQueue.catch(() => {}).then(async () => {
     if (page === navigation.current) return true;
@@ -62,9 +66,11 @@ export function changePage(page, fromHash = false) {
       await flushViews();
       if (navigation.current === 'tasks' && tasksView && !(await tasksView.leave())) throw new StoreError('write');
       if (navigation.current === 'habits') await habitsView?.leave();
+      if (navigation.current === 'goals') await goalsView?.leave();
       renderPage(page);
       if (page === 'habits') await prepareHabits();
       if (page === 'focus') { await focusView?.entered(); await dataSource?.ensureLoaded(); }
+      if (page === 'goals') await dataSource?.ensureLoaded();
       if (page === 'review') await prepareReview();
       const setRoute = fromHash ? history.replaceState.bind(history) : (history.pushState || history.replaceState).bind(history);
       setRoute(null, '', '#' + prefix + navigation.current);
@@ -83,7 +89,7 @@ window.addEventListener('hashchange', async () => {
   const nextMode = /^#demo(?:\/|$)/.test(location.hash) ? 'demo/' : /^#sim(?:\/|$)/.test(location.hash) ? 'sim/' : '';
   if (nextMode !== prefix) {
     // 模式切换必须重新打开对应的库，不能把正式来源留在 #demo 或 #sim 下。
-    try { await flushViews(); await disposeApp(); location.reload(); }
+    try { await flushViews(); await goalsView?.leave(); await disposeApp(); location.reload(); }
     catch (error) { history.replaceState(null, '', '#' + prefix + navigation.current); $('offline-ready').textContent = '尚未切换模式：' + error.message; }
     return;
   }
@@ -208,7 +214,7 @@ document.addEventListener('visibilitychange', async () => {
 window.addEventListener('pageshow', event => { if (event.persisted) focusView?.entered(); });
 window.addEventListener('beforeunload', event => {
   // 浏览器不等待 beforeunload 的 Promise；启动 flush，并在有待保存输入时请求保留页面。
-  if (dirty || tasksView?.pending.size || tasksView?.hasStepDraft() || habitsView?.busy || habitsView?.journal.dirty || document.activeElement?.tagName === 'TEXTAREA') { event.preventDefault(); event.returnValue = ''; }
+  if (dirty || tasksView?.pending.size || tasksView?.hasStepDraft() || habitsView?.busy || habitsView?.journal.dirty || goalsView?.pending || goalsView?.hasDraft() || document.activeElement?.tagName === 'TEXTAREA') { event.preventDefault(); event.returnValue = ''; }
   flushViews().catch(e => { $('offline-ready').textContent = '输入仍保留：' + e.message; });
 });
 async function run(action) {
@@ -239,7 +245,7 @@ $('confirm-clear').addEventListener('click', async () => {
   try {
     await flushViews();
     if (controller) await controller.clear(); else await store.clear();
-    await controller?.dispose(); habitsView?.destroy(); focusView?.destroy(); reviewView?.destroy(); dirty = false; store.close(); location.reload();
+    await controller?.dispose(); habitsView?.destroy(); focusView?.destroy(); goalsView?.destroy(); reviewView?.destroy(); dirty = false; store.close(); location.reload();
   } catch (e) { showError(e, 'clear-result'); busy = false; controls(); $('confirm-clear').disabled = false; }
 });
 for (const [id, method] of [['sim-task', 'editTask'], ['sim-review', 'editReview'], ['sim-habit', 'editHabit']]) $(id).addEventListener('click', async () => {
@@ -293,9 +299,12 @@ async function startStorage() {
     focusView = new FocusView({ document, source: dataSource, timer: new FocusTimer({ store, source: dataSource, newId: newDeviceId }),
       onNotice: renderFocusNotice, ...focusBell(window) });
     await focusView.entered();
+    goalsView = new GoalsView({ document, root: $('goals-root'), source: dataSource, main,
+      openTask: async id => { if (await changePage('tasks')) await tasksView.openDetail(id); }, onSaved: renderStatus });
+    if (navigation.current === 'goals') goalsView.enter();
     reviewUI = saved.settings.reviewUI || {};
     if (navigation.current === 'habits') await prepareHabits();
-    if (!dataSource.snapshot().loadingBuckets.length || ['review', 'focus'].includes(navigation.current)) await prepareReview();
+    if (!dataSource.snapshot().loadingBuckets.length || ['review', 'focus', 'goals'].includes(navigation.current)) await prepareReview();
     else {
       $('task-loading').textContent = '专注统计及其他内容正在载入…';
     $('review-root').textContent = '正在载入…'; $('review-root').setAttribute('aria-busy', 'true');
@@ -310,7 +319,7 @@ async function startStorage() {
     syncState.setConflicts(dataSource.snapshot().conflicts.filter(c => !c.hiddenByDeletion).length);
     if (navigation.current === 'tasks') tasksView.entered();
     storageReady = true; fillSettings(); controls();
-    if (!demoMode && !saved.settings.joined && !['habits', 'focus'].includes(navigation.current)) { history.replaceState(null, '', '#' + prefix + 'settings'); renderPage('settings', false); }
+    if (!demoMode && !saved.settings.joined && !['habits', 'focus', 'goals'].includes(navigation.current)) { history.replaceState(null, '', '#' + prefix + 'settings'); renderPage('settings', false); }
     if (controller?.snapshot().message) $('connection-result').textContent = controller.snapshot().message;
     if (saved.settings.joined && !demoMode) await controller.foreground();
   } catch (error) {

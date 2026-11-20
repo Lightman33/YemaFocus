@@ -1,6 +1,6 @@
 // 与任务页共用本机事务及同步入口；取消/撤销都写明确布尔值，绝不删除打卡单元。
 import { DataError } from './datasource.js';
-import { editableDay, isChecked, habitConflicts } from './habit-model.js';
+import { canJournal, checkDayIssue, isChecked, habitConflicts } from './habit-model.js';
 
 export function requireHabit(planner, id) {
   const habit = (planner.habits || []).find(h => h.id === id);
@@ -29,7 +29,8 @@ export class HabitActions {
   }
   async setCheck(id, day, checked, { baseToken = null, undoable = true, previousChecked } = {}) {
     const snapshot = this.ready(), habit = requireHabit(snapshot.planner, id);
-    if (!editableDay(day, snapshot.today)) throw new DataError('只能修改今天和过去六天的打卡。');
+    const issue = checkDayIssue(habit, day, snapshot.today);
+    if (issue) throw new DataError(issue + '。');
     if (typeof checked !== 'boolean') throw new DataError('打卡值必须是已打卡或未打卡。');
     if (habitConflicts(snapshot, id).some(c => c.path[0] === 'entity' || c.path[0] === 'habit-check' && c.path[2] === day)) {
       throw new DataError('这一天两边都改过，请先选择保留哪一份。');
@@ -49,8 +50,7 @@ export class HabitActions {
   }
   async saveJournal(id, day, note, { baseToken = null } = {}) {
     const snapshot = this.ready(), habit = requireHabit(snapshot.planner, id);
-    // 对应 Habit.CanJournal：开始日期至今天；结束日期不限制写感想。
-    if (!editableDay(day, snapshot.today) || habit.start && day < habit.start) throw new DataError('请选择开始日期之后、最近七天内的日期。');
+    if (!canJournal(habit, day, snapshot.today)) throw new DataError('请选择从习惯开始当天到今天之间的日期。');
     if (habitConflicts(snapshot, id).some(c => c.path[0] === 'entity')) throw new DataError('请先确认保留习惯还是删除，再写感想。');
     const utc = new Date(this.now()).toISOString();
     return this.source.change('已保存习惯感想：' + habit.name + ' · ' + day, p => {

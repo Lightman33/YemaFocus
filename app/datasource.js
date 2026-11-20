@@ -6,7 +6,8 @@
 // 不扫描未改集合的正文。远端 refresh/其他页面版本变化可全量投影。
 // attachEngine 与来源共用store：封套模式调用commit(state,keys)，原始示例模式仍update。
 // resolve/subscribe 原用法不变，第一次读取仍调用snapshot。
-import { stateToPlanner, applyPlannerChanges, readEntity as convertReadEntity, applyEntityChange } from '../sync/convert.js';
+import { applyPlannerChanges } from '../sync/convert.js';
+import { stateToPlanner, readEntity as convertReadEntity, applyEntityChange, goalCollections, goalUnitKinds, legacyGoalProjection, goalRowId } from './goal-sync.js';
 import { merge, unitInfo, branchKey, emptyState } from '../sync/merge.js';
 import { resolveUnit, updateUnit } from '../sync/edit.js';
 import { canonical, encodeLegacy, decodeLegacy, unitKey } from '../sync/canonical.js';
@@ -14,6 +15,7 @@ import { copy, repeating, REPEAT_READONLY } from './task-model.js';
 import { StoreError } from './store.js';
 import { bucketOf } from '../sync/pack.js';
 import { recordKey } from './focus-records.js';
+import { FOCUS_ITEMS, readFocusItems } from './focus-items.js';
 
 export class DataError extends StoreError {
   constructor(message) { super('data'); this.message = message; this.name = 'DataError'; }
@@ -79,10 +81,11 @@ export function conflictList(state) {
     const info = unitInfo(state.units[key]);
     if (!info.conflict || auxiliary(key)) return [];
     const path = JSON.parse(key);
+    if (path[0] === FOCUS_ITEMS) return [];
     const candidates = info.alternatives.map(v => ({ branch: branchKey(v), deleted: v.deleted, value: decodeLegacy(v.value), vv: v.vv }));
-    const taskId = path[0] === 'entity' && path[1] === 'tasks' ? path[2] : ['task-content', 'task-status', 'step'].includes(path[0]) ? path[1] : null;
+    const taskId = path[0] === 'entity' && path[1] === 'tasks' ? path[2] : ['task-content', 'task-status', 'step', 'task-goal'].includes(path[0]) ? path[1] : null;
     const entity = taskId ? unitInfo(state.units[unitKey('entity', 'tasks', taskId)]) : null;
-    return [{ key, path, candidates, deleteConflict: info.deleteConflict, both: textCombination(candidates) !== null,
+    return [{ key, path, candidates, deleteConflict: info.deleteConflict, both: !goalUnitKinds.includes(path[0]) && textCombination(candidates) !== null,
       taskId, hiddenByDeletion: Boolean(taskId && entity?.preferred?.deleted && !entity.conflict) }];
   });
 }
@@ -96,7 +99,7 @@ function singleProjection(state) {
 }
 function plannerEdit(state, before, after, device, now) {
   const view = singleProjection(state);
-  const edited = applyPlannerChanges(view, before, after, device, now), result = copy(state);
+  const edited = applyPlannerChanges(view, legacyGoalProjection(before), legacyGoalProjection(after), device, now), result = copy(state);
   for (const key of Object.keys(edited.units)) {
     if (view.units[key] && same(view.units[key], edited.units[key])) continue;
     if (unitInfo(state.units[key]).conflict) {
@@ -220,7 +223,8 @@ function draftOf(base) {
 }
 // 实体键索引随已知改动继承；转换器只看到单实体，避免每次重建整库实体索引。
 const entityIndexes = new WeakMap();
-const collectionKinds = { project: 'projects', 'task-content': 'tasks', 'task-status': 'tasks', step: 'tasks',
+const collectionKinds = { project: 'projects', 'task-content': 'tasks', 'task-status': 'tasks', 'task-goal': 'tasks', step: 'tasks', goal: 'goals', 'goal-year': 'goalYears',
+  'goal-plan': 'goalPlans', 'goal-plan-lock': 'goalPlanLocks',
   'habit-definition': 'habits', 'habit-check': 'habits', 'habit-journal': 'habits', countdown: 'countdowns',
   'review-meta': 'reviews', 'review-title': 'reviews', 'review-score': 'reviews', 'review-module': 'reviews', 'week-meta': 'weekNotes', 'week-field': 'weekNotes' };
 function ownerOf(key) {
@@ -268,8 +272,9 @@ function observedOverlay(base, partial) {
   });
   const result = { ...base, units }; observedParts.set(result, { root, delta }); inheritIndex(base, result, Object.keys(partial.units)); return result;
 }
-const entityCollections = ['projects', 'tasks', 'habits', 'weekNotes', 'reviews', 'countdowns'];
-const rowId = (row, collection) => collection === 'weekNotes' ? row.monday : row.id;
+const legacyCollections = ['projects', 'tasks', 'habits', 'weekNotes', 'reviews', 'countdowns'];
+const entityCollections = [...legacyCollections, ...Object.keys(goalCollections)];
+const rowId = (row, collection) => collection === 'weekNotes' ? row.monday : own(goalCollections, collection) ? goalRowId(row, collection) : row.id;
 function entityDiff(before, after) {
   const changes = [];
   for (const collection of entityCollections) {
@@ -340,7 +345,7 @@ export class DataSource {
     this.cacheState = state; this.cacheSettings = this.record?.settings; this.cacheMinute = minute;
     this.cache = { joined: Boolean(state && this.record?.settings.joined === true), planner: previous ? previous.planner : state ? stateToPlanner(state, { allowConflicts: true }) : { tasks: [], projects: [] },
       conflicts: previous ? previous.conflicts : conflictList(state), today: zone.timeZone ? wallTime(this.now(), zone.timeZone).slice(0, 10) : null,
-      ...zone, loading: { tasks: false, reviews: this.unloaded.some(b => b.startsWith('reviews-')), habits: this.unloaded.some(b => b === 'habits' || b.startsWith('habits-')), records: this.unloaded.some(b => b.startsWith('records-')) }, loadingBuckets: [...this.unloaded], demo: this.demo, focus: previous ? previous.focus : focusStats(state), ...(previous ? { settings: previous.settings } : extras(state)) };
+      ...zone, longTermItems: previous ? previous.longTermItems : readFocusItems(state), loading: { tasks: false, reviews: this.unloaded.some(b => b.startsWith('reviews-')), habits: this.unloaded.some(b => b === 'habits' || b.startsWith('habits-')), records: this.unloaded.some(b => b.startsWith('records-')) }, loadingBuckets: [...this.unloaded], demo: this.demo, focus: previous ? previous.focus : focusStats(state), ...(previous ? { settings: previous.settings } : extras(state)) };
     this.tokenPlanners.set(this.currentToken, this.cache.planner);
     return this.snapshotView();
   }
@@ -459,7 +464,7 @@ export class DataSource {
   }
   async change(description, mutator, { undoable = true, baseToken = null } = {}) {
     this.requireJoined();
-    if (baseToken && !this.tokens.has(baseToken)) throw new DataError('编辑页面已过期，请重新打开任务。');
+    if (baseToken && !this.tokens.has(baseToken)) throw new DataError('编辑页面已过期，请重新打开。');
     const device = this.record.settings.deviceId, now = this.now(), observed = baseToken && this.tokens.get(baseToken);
     const base = observed || this.record.state;
     const before = baseToken && this.tokenPlanners.has(baseToken) ? this.tokenPlanners.get(baseToken) : base === this.cacheState ? this.cache.planner : stateToPlanner(base, { allowConflicts: true });
@@ -467,7 +472,11 @@ export class DataSource {
     if (value && typeof value.then === 'function') { Promise.resolve(value).catch(() => {}); throw new DataError('修改函数必须同步完成。'); }
     let after = draft.finish(), changes = entityDiff(before, after);
     for (const change of changes) if (change.collection === 'tasks') {
-      if (change.before && repeating(change.before)) throw new DataError(REPEAT_READONLY);
+      if (change.before && repeating(change.before)) {
+        const { goalId, ...beforeFields } = change.before;
+        const { goalId: nextGoal, ...afterFields } = change.after || {};
+        if (goalId === nextGoal || !same(beforeFields, afterFields)) throw new DataError(REPEAT_READONLY);
+      }
       if (change.after) {
         // 不把缓存中共享的实体就地写坏。
         const row = { ...change.after, updated: new Date(now).toISOString() };
@@ -475,7 +484,7 @@ export class DataSource {
       }
     }
     const rootChanged = [...new Set([...Object.keys(before), ...Object.keys(after)])].some(key => !entityCollections.includes(key) && (own(before, key) !== own(after, key) || !same(before[key] ?? null, after[key] ?? null)));
-    const layoutChanged = entityCollections.some(c => own(before, c) !== own(after, c));
+    const layoutChanged = legacyCollections.some(c => own(before, c) !== own(after, c));
     if (!changes.length && !rootChanged && !layoutChanged) return null;
     if (this.unloaded.length && (rootChanged || layoutChanged)) throw new DataError('其他内容正在载入，请等待载入完成后再保存。');
     let editBranch, savedKeys = [], savedChanges = [], concurrent = false, committedGeneration, committedTaskRevision;
@@ -492,7 +501,8 @@ export class DataSource {
       for (const original of changes) {
         let change = { ...original }, branch = latest;
         if (observed) {
-          const keys = entityUnitKeys(base, change.collection, change.id);
+          const keys = change.collection === 'goalPlans' ?
+            entityUnitKeys(latest, change.collection, change.id) : entityUnitKeys(base, change.collection, change.id);
           const newRemote = keys.some(key => {
             const seen = {};
             for (const v of base.units[key]?.versions || []) for (const [id, count] of Object.entries(v.vv)) seen[id] = Math.max(seen[id] || 0, count);
@@ -502,6 +512,8 @@ export class DataSource {
         }
         if (branch === latest) {
           const current = readEntity(latest, change.collection, change.id, { allowConflicts: true });
+          // 同一份本机库只初始化一次年度名称，刷新期间已有的初始化或改名优先。
+          if (change.collection === 'goalYears' && !change.before && current) continue;
           if (change.before && change.after && current) {
             const row = copy(same(current, change.before) ? change.after : current);
             if (!same(current, change.before)) replayDiff(row, change.before, change.after);
@@ -527,7 +539,7 @@ export class DataSource {
         for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) if (!entityCollections.includes(key)) {
           if (own(after, key)) next[key] = copy(after[key]); else delete next[key];
         }
-        for (const c of entityCollections) if (own(before, c) !== own(after, c)) { if (own(after, c)) next[c] ||= []; else delete next[c]; }
+        for (const c of legacyCollections) if (own(before, c) !== own(after, c)) { if (own(after, c)) next[c] ||= []; else delete next[c]; }
         const extra = plannerEdit(edited, view, next, device, now);
         for (const key of Object.keys(extra.units)) if (!edited.units[key] || !same(extra.units[key], edited.units[key])) { allKeys.add(key); branchState = { ...branchState, units: { ...branchState.units, [key]: extra.units[key] } }; }
         edited = extra;
@@ -615,7 +627,8 @@ export class DataSource {
     if (choice.observed && !this.tokens.has(choice.observed)) throw new DataError('冲突页面已过期，请重新查看。');
     const observedState = (choice.observed && this.tokens.get(choice.observed)) || this.record.state;
     const path = JSON.parse(key);
-    const collection = { 'task-content': 'tasks', 'task-status': 'tasks', step: 'tasks', project: 'projects', 'review-module': 'reviews', 'review-title': 'reviews', 'week-field': 'weekNotes',
+    if (path[0] === FOCUS_ITEMS) throw new DataError('长期事项请在电脑上修改。');
+    const collection = { 'task-content': 'tasks', 'task-status': 'tasks', 'task-goal': 'tasks', step: 'tasks', project: 'projects', 'review-module': 'reviews', 'review-title': 'reviews', 'week-field': 'weekNotes',
       'habit-definition': 'habits', 'habit-check': 'habits', 'habit-journal': 'habits' }[path[0]];
     if ((collection === 'habits' || path[0] === 'entity' && path[1] === 'habits') && this.snapshot().loading.habits) throw new DataError('习惯正在载入，请稍候再处理冲突。');
     const relevant = [key]; if (collection) relevant.push(unitKey('entity', collection, path[1]));
@@ -623,6 +636,7 @@ export class DataSource {
     if (!info.conflict) throw new DataError('这处冲突已改变，请重新查看。');
     let value, deleted = false;
     if (choice.type === 'both') {
+      if (goalUnitKinds.includes(path[0])) throw new DataError('请选择要保留的一个版本。');
       const candidates = info.alternatives.map(v => ({ deleted: v.deleted, value: decodeLegacy(v.value) }));
       const unitPath = JSON.parse(key);
       value = unitPath[0] === 'review-module' ? reviewCombination(candidates, unitPath[2]) : textCombination(candidates);
@@ -635,7 +649,7 @@ export class DataSource {
       value = chosen.value; deleted = chosen.deleted;
     }
     const now = this.now(), stamp = { updatedAt: now, legacyUpdated: new Date(now).toISOString() }, device = this.record.settings.deviceId;
-    if (collection === 'habits') delete stamp.legacyUpdated; // 实体时间只放存在单元。
+    if (collection === 'habits' || goalUnitKinds.includes(path[0])) delete stamp.legacyUpdated; // 实体时间只放存在单元。
     if (path[0] === 'habit-check') stamp.legacyCheckEdit = encodeLegacy(new Date(now).toISOString());
     let edited = resolveUnit(base, key, device, value, stamp, { deleted });
     if (collection) {
@@ -643,7 +657,7 @@ export class DataSource {
       const entity = unitInfo(base.units[entityKey]);
       if (entity.conflict) throw new DataError(collection === 'habits' ? '请先确认保留习惯还是删除，再处理打卡或感想冲突。' : '请先确认保留任务还是删除，再处理字段冲突。');
       if (entity.preferred?.deleted) throw new DataError('这项内容已经删除，请重新查看。');
-      edited = updateUnit(edited, entityKey, device, true, { updatedAt: now, ...(collection === 'habits' ? { legacyUpdated: encodeLegacy(new Date(now).toISOString()) } : {}) });
+      edited = updateUnit(edited, entityKey, device, true, { updatedAt: now, ...(collection === 'habits' || path[0] === 'task-goal' ? { legacyUpdated: encodeLegacy(new Date(now).toISOString()) } : {}) });
     }
     const touched = Object.keys(edited.units).filter(k => !base.units[k] || !same(base.units[k], edited.units[k]));
     if (this.engine?.commit && this.record.envelope) {

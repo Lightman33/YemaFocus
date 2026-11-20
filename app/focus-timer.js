@@ -50,14 +50,16 @@ export class FocusTimer {
     return this.save({ workMinutes, breakMinutes }, false);
   }
 
-  start(kind, taskId = '', subject = '', skip = false) {
+  start(kind, taskId = '', subject = '', skip = false, longTermItem = '') {
     const snapshot = this.source.snapshot();
     if (!snapshot.joined) throw new DataError(JOIN_TIP);
     if (!snapshot.timeZone) throw new DataError(ZONE_TIP);
     if (this.state.session || (kind === 'break' && !this.state.offer)) return;
     const task = (snapshot.planner.tasks || []).find(t => t.id === taskId && !t.done && !t.trashedAt);
     if (kind === 'work' && taskId && !task) throw new DataError('所选任务已完成或删除，请重新选择。');
-    const target = kind === 'work' ? taskFocus(snapshot.planner, task, subject) : { subject: '短休息', link: '' };
+    if (kind === 'work' && longTermItem && !snapshot.longTermItems?.includes(longTermItem))
+      throw new DataError('所选长期事项已改名或删除，请重新选择。');
+    const target = kind === 'work' ? taskFocus(snapshot.planner, task, longTermItem || subject) : { subject: '短休息', link: '' };
     const startedAt = this.now();
     return this.save({ offer: false, session: {
       id: this.newId(), device: this.device, kind, startedAt, zone: snapshot.timeZone, pausedAt: null, pausedMs: 0,
@@ -66,12 +68,12 @@ export class FocusTimer {
     } });
   }
 
-  async act(action, { taskId, subject } = {}) {
+  async act(action, { taskId, subject, longTermItem } = {}) {
     const result = await this.advance(true);
     if (result || this.state.session?.ending) return result;
     const session = this.state.session, now = this.now();
     switch (action) {
-      case 'start': await this.start('work', taskId, subject); break;
+      case 'start': await this.start('work', taskId, subject, false, longTermItem); break;
       case 'rest': await this.start('break'); break;
       case 'skip':
         if (session?.kind === 'break') await this.end(session, now, '跳过');

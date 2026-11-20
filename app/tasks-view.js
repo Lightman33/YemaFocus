@@ -1,6 +1,7 @@
 import { TaskActions } from './task-actions.js';
 import { DataError, wallTime } from './datasource.js';
 import { StoreError } from './store.js';
+import { goalGroups } from './goals-model.js';
 import { parseQuick, groupTasks, visibleGroups, projectTree, repeating, abandoned, overdue, whenText, dateText, wallText, PRIORITIES, ABANDON_REASONS, REPEAT_READONLY, addDays, weekStart } from './task-model.js';
 
 const FIELD_NAMES = { title: '标题', notes: '备注', date: '日期', weekOf: '周内安排', time: '时间', endTime: '结束时间', endDate: '结束日期', priority: '优先级', project: '项目', done: '已关闭', doneAt: '完成时间', abandoned: '已放弃', abandonedAt: '放弃时间', abandonReason: '放弃原因', abandonHistory: '放弃与恢复记录', abandonPrevious: '放弃前快照', text: '步骤内容', steps: '步骤', pinned: '置顶', monthOf: '月内安排', created: '创建时间', estPomo: '预估番茄', postponed: '推迟次数', series: '重复系列', remindTime: '提醒时间', remindOffset: '提前提醒天数', remindedAt: '上次提醒', pomoTag: '专注归类', order: '顺序', repeat: '重复规则', trashedAt: '垃圾桶时间' };
@@ -294,6 +295,23 @@ export class TasksView {
     select.value = value ?? '';
   }
   projectOptions() { return [['', '无项目'], ...projectTree(this.snapshot.planner.projects).map(p => [p.id, p.path]), ...(this.snapshot.planner.projects || []).filter(p => p.archived).map(p => [p.id, p.name + '（已归档）'])]; }
+  goalOptions(select, value) {
+    this.options(select, [['', '不关联']], '');
+    let found = !value;
+    for (const { label, goals } of goalGroups(this.snapshot.planner)) {
+      const group = this.el('optgroup'); group.label = label;
+      for (const goal of goals) {
+        const option = this.el('option', goal.title); option.value = goal.id; group.append(option);
+        if (goal.id === value) found = true;
+      }
+      select.append(group);
+    }
+    if (!found) {
+      const unavailable = this.el('option', '原关联目标已删除'); unavailable.value = value; unavailable.disabled = true;
+      select.append(unavailable);
+    }
+    select.value = value || '';
+  }
   async openDetail(id) {
     const task = this.task(id); if (!task || !(await this.showSheet('任务详情', 'detail', id))) return;
     const body = this.$('task-sheet-body'), readonly = repeating(task) || this.snapshot.conflicts.some(c => c.taskId === id);
@@ -311,6 +329,9 @@ export class TasksView {
     this.options(prio, PRIORITIES.map((p, i) => [i, p]), task.priority || 0);
     const project = this.field(body, 'project', '所属项目', 'select', task.project, (value, baseToken) => this.actions.patch(id, { project: value || null }, { baseToken, undoable: false }), readonly);
     this.options(project, this.projectOptions(), task.project);
+    const goal = this.field(body, 'goalId', '关联目标', 'select', task.goalId,
+      (value, baseToken) => this.actions.setGoal(id, value, { baseToken }), !this.snapshot.joined || !this.snapshot.timeZone || this.snapshot.conflicts.some(c => c.taskId === id));
+    this.goalOptions(goal, task.goalId);
     this.field(body, 'notes', '备注', 'textarea', task.notes || '', (notes, baseToken) => this.actions.patch(id, { notes }, { baseToken, undoable: false }), readonly);
     this.stepsTitle = this.el('h3', '步骤'); this.stepsBox = this.el('div', '', 'detail-steps'); body.append(this.stepsTitle, this.stepsBox);
     const newSteps = this.field(body, 'new-steps', '添加步骤（粘贴多行自动拆开）', 'textarea', this.ui.stepDrafts[id] || '', null, readonly);
@@ -341,15 +362,17 @@ export class TasksView {
     if (this.pointerDown || this.pointerSettling) { this.detailQueued = true; return; }
     const task = this.task(this.selected); if (!task) { this.$('task-save-status').textContent = '任务在另一处已删除；正在输入的文字仍保留，保存会保留两份供选择。'; return; }
     const conflict = this.snapshot.conflicts.some(c => c.taskId === task.id), readonly = repeating(task) || conflict;
-    this.readOnlyNote.textContent = repeating(task) ? REPEAT_READONLY : conflict ? '请先在上方选择保留哪一份，再编辑任务。正在输入的文字会继续保留。' : '';
+    this.readOnlyNote.textContent = repeating(task) ? REPEAT_READONLY + '可更改关联目标。' : conflict ? '请先在上方选择保留哪一份，再编辑任务。正在输入的文字会继续保留。' : '';
     this.readOnlyNote.hidden = !readonly;
     this.addStepButton.disabled = readonly; this.deleteButton.disabled = readonly;
     if (this.document.activeElement !== this.inputs.get('new-steps')) this.inputs.get('new-steps').disabled = readonly;
-    for (const key of ['title', 'date', 'time', 'priority', 'project', 'notes']) {
+    for (const key of ['title', 'date', 'time', 'priority', 'project', 'goalId', 'notes']) {
       const input = this.inputs.get(key); if (!input || this.document.activeElement === input || this.pending.has(input)) continue;
-      input.disabled = readonly || (key === 'time' && Boolean(task.endDate || task.endTime));
+      input.disabled = key === 'goalId' ? !this.snapshot.joined || !this.snapshot.timeZone || conflict : readonly || (key === 'time' && Boolean(task.endDate || task.endTime));
       const value = task[key] ?? '';
-      if (key === 'project') this.options(input, this.projectOptions(), value); else input.value = String(value);
+      if (key === 'project') this.options(input, this.projectOptions(), value);
+      else if (key === 'goalId') this.goalOptions(input, value);
+      else input.value = String(value);
       input.savedValue = input.value; input.baseToken = this.snapshot.editToken;
     }
     this.scheduleInfo.textContent = whenText(task, this.snapshot.today) + ((task.weekOf || task.monthOf || task.endDate || task.endTime) ? ' · 可在“更多操作”里整体改期；跨天跨度、周/月安排和时段细节请在电脑修改。' : '');
@@ -393,19 +416,22 @@ export class TasksView {
     this.conflictSignature = signature; this.conflictBox.replaceChildren();
     for (const conflict of conflicts) {
       const observed = this.snapshot.editToken, card = this.el('div', '', 'conflict-card');
-      card.append(this.el('h3', conflict.deleteConflict ? '一边删除，一边修改' : '两边都改过，请选保留哪一份'));
+      card.append(this.el('h3', conflict.path[0] === 'task-goal' ? '关联目标有不同版本' : conflict.deleteConflict ? '一边删除，一边修改' : '两边都改过，请选保留哪一份'));
       const live = conflict.candidates.filter(c => !c.deleted);
       const fields = [...new Set(live.flatMap(c => typeof c.value === 'object' && c.value ? Object.keys(c.value) : []))].filter(field => live.some(c => JSON.stringify(c.value?.[field]) !== JSON.stringify(live[0]?.value?.[field])));
       conflict.candidates.forEach((candidate, index) => {
         const version = this.el('div', '', 'conflict-version'); version.append(this.el('strong', candidate.deleted ? '删除的版本' : '版本 ' + (index + 1)));
-        if (!candidate.deleted) {
+        if (conflict.path[0] === 'task-goal') {
+          const goal = this.snapshot.planner.goals?.find(g => g.id === candidate.value);
+          version.append(this.el('p', candidate.deleted ? '不关联' : goal ? goal.year + ' · ' + goal.title : '目标已删除', 'conflict-value'));
+        } else if (!candidate.deleted) {
           const value = candidate.value;
           if (value && typeof value === 'object') {
             const show = fields.length ? fields : Object.keys(value).filter(k => k !== 'id');
             for (const field of show) version.append(this.el('p', (FIELD_NAMES[field] || field) + '：' + this.displayValue(field, value[field]), 'conflict-value'));
           } else version.append(this.el('p', value === true ? '保留这条任务及其内容' : String(value), 'conflict-value'));
         }
-        const text = conflict.deleteConflict ? candidate.deleted ? '确认删除' : conflict.path[0] === 'step' ? '保留步骤' : '保留任务' : candidate.deleted ? '确认删除' : '保留这一份（版本 ' + (index + 1) + '）';
+        const text = conflict.path[0] === 'task-goal' ? candidate.deleted ? '选不关联' : '保留这个关联' : conflict.deleteConflict ? candidate.deleted ? '确认删除' : conflict.path[0] === 'step' ? '保留步骤' : '保留任务' : candidate.deleted ? '确认删除' : '保留这一份（版本 ' + (index + 1) + '）';
         version.append(this.button(text, text, () => this.perform(() => this.resolveConflict(conflict.key, { branch: candidate.branch, observed }), { undo: false }), candidate.deleted ? 'danger-button' : 'secondary')); card.append(version);
       });
       if (conflict.both) card.append(this.button('两段都留着', '两段都留着，按页面版本顺序各占一段', () => this.perform(() => this.resolveConflict(conflict.key, { type: 'both', observed }), { undo: false })));
