@@ -115,7 +115,8 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
 
   function updateModule(section) {
     const input = section.entry.input, value = input.value, editing = section.open && section.edit;
-    section.toggle.textContent = (section.open ? '▼ ' : '▶ ') + (section.name || '其他') + (section.extra ? '（存档模块）' : '');
+    // 预览行放在按钮里：用户常点标题下方那行字，整块都应一次展开并进入编辑。
+    section.title.textContent = (section.open ? '▼ ' : '▶ ') + (section.name || '其他') + (section.extra ? '（存档模块）' : '');
     section.toggle.setAttribute('aria-expanded', String(section.open)); section.preview.textContent = trim(value).split(/\r?\n/)[0] || '还没写';
     section.preview.hidden = section.open;
     section.read.textContent = value || '还没写'; section.read.hidden = !section.open || section.edit;
@@ -142,8 +143,9 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
       section.open = !section.open; updateModule(section);
       if (section.open && section.edit) focusModule(input);
     }, 'review-module-toggle');
+    section.title = el('span', '', 'review-module-title'); section.toggle.replaceChildren(section.title, preview);
     section.editButton = button('编辑文字', '编辑本期数据文字', () => { section.edit = true; updateModule(section); focusModule(input); });
-    editor.append(input); body.append(read, section.editButton, editor); card.append(conflict, section.toggle, preview, body); sectionBox.append(card); modules.set(name, section); return section;
+    editor.append(input); body.append(read, section.editButton, editor); card.append(conflict, section.toggle, body); sectionBox.append(card); modules.set(name, section); return section;
   }
   function syncWriter() {
     const record = findReview(snapshot.planner, period), configured = reviewModules(snapshot.settings, period.scale);

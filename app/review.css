@@ -19,7 +19,8 @@
 .review-page textarea:disabled { color: var(--ink); -webkit-text-fill-color: var(--ink); opacity: 1; }
 .review-module { position: relative; margin: 14px 0; padding: 8px 12px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .review-module-toggle { width: 100%; text-align: left; background: transparent; color: var(--ink); padding: 6px 4px; overflow-wrap: anywhere; }
-.review-preview { display: block; margin: 4px 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .875rem; }
+.review-module-title { display: block; }
+.review-preview { display: block; margin: 4px 0 0; color: var(--caption); font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .875rem; }
 .review-module-body > :not([hidden]) { margin-top: 8px; }
 .review-module-editor[aria-hidden="true"] { position: absolute; inset: 0 12px auto; height: 0; overflow: hidden; opacity: 0; pointer-events: none; }
 .review-fulltext { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 8px 0; }

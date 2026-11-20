@@ -172,7 +172,7 @@ test('统计清单调用已有完成操作，重复任务提示且不修改',asy
 });
 test('空统计解释、额外模块顺序、无标题空白模块不显示',async()=>{
  const s=setup();s.find('看统计').emit('click');await until(()=>s.root.textContent.includes('电脑同步过来或完成任务后'));assert.equal(s.root.querySelectorAll('.review-metric').length,0);s.view.destroy();
- const source=createDemoReviewSource('2026-11-13',{now}),extra=setup(source);extra.find('上一期').emit('click');await until(()=>extra.root.textContent.includes('旧版小记（存档模块）'));assert.equal(extra.root.querySelectorAll('.review-module').at(-1).querySelector('button').textContent,'▶ 旧版小记（存档模块）');extra.view.destroy();
+ const source=createDemoReviewSource('2026-11-13',{now}),extra=setup(source);extra.find('上一期').emit('click');await until(()=>extra.root.textContent.includes('旧版小记（存档模块）'));assert.equal(extra.root.querySelectorAll('.review-module').at(-1).querySelector('.review-module-title').textContent,'▶ 旧版小记（存档模块）');extra.view.destroy();
  const blank=memorySource();blank.state.planner.reviews=[{id:'day:2026-11-13',title:'',score:0,content:'【 】\n  \n【今日完成】\n一',updated:now()}];const b=setup(blank);assert.equal(b.input('复盘模块：其他'),undefined);b.view.destroy();
 });
 test('切模式、flush、visibilitychange、pagehide均即时触发保存',async()=>{
