@@ -248,3 +248,28 @@ test('全屏期间沿用真实时间，暂停与结束按钮受保护，到点�
   assert.equal(source.snapshot().records[0].columns[2], '2026-11-03 12:01:00');
   assert.equal(bells, 1);
 });
+
+test('v3.0.1 全屏圆环按剩余比例缩短、显示离开说明，时间数字获焦不画框', async () => {
+  const { document, get } = fixture();
+  const styles = {};
+  for (const name of ['arc', 'head']) {
+    styles[name] = {};
+    get('fullscreen-' + name).style = { setProperty: (key, value) => { styles[name][key] = value; } };
+  }
+  const full = new FocusFullscreen(document, get, {});
+  full.open('12:30', '虚构事项', 0.5, '中途离开 1 次，共 2 分钟');
+  assert.deepEqual(styles.arc, { 'stroke-dashoffset': '500.0' });
+  assert.deepEqual(styles.head, { transform: 'rotate(180.00deg)' });
+  assert.equal(get('fullscreen-away').textContent, '中途离开 1 次，共 2 分钟');
+  assert.equal(get('fullscreen-away').hidden, false);
+  full.update('00:00', '虚构事项', 0, '');
+  assert.equal(styles.arc['stroke-dashoffset'], '1000.0');
+  // CSP 禁止 style 属性：脚本里不得用 setAttribute('style')。
+  assert.doesNotMatch(await readFile(new URL('../../app/focus-fullscreen.js', import.meta.url), 'utf8'), /setAttribute\(\s*['"]style/);
+  assert.equal(get('fullscreen-away').hidden, true);
+  full.destroy();
+  const css = await readFile(new URL('../../app/focus.css', import.meta.url), 'utf8');
+  assert.match(css, /\.focus-fullscreen-time:focus\s*\{\s*outline:\s*none/);
+  assert.match(css, /prefers-reduced-motion: reduce\)\s*\{[^\n]*focus-fullscreen-stage::before\s*\{\s*animation:\s*none/);
+  assert.match(document.getElementById('focus-fullscreen').textContent, /引导式访问/);
+});

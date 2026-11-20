@@ -1,6 +1,6 @@
 import { FocusFullscreen } from './focus-fullscreen.js';
 import { todayFocus } from './focus-records.js';
-import { JOIN_TIP, timerReading, ZONE_TIP } from './focus-timer.js';
+import { awaySummary, JOIN_TIP, timerReading, ZONE_TIP } from './focus-timer.js';
 import { lastDay } from './task-model.js';
 
 const actions = ['start', 'pause', 'resume', 'early', 'abandon', 'rest', 'skip', 'retry'];
@@ -11,6 +11,8 @@ function sessionSubject(session) {
   return session?.link ? session.link.slice(session.link.indexOf('|') + 1) : session?.subject || '';
 }
 const runningWork = session => session?.kind === 'work' && session.pausedAt === null && !session.ending;
+
+const remainingFraction = (session, remaining) => session ? remaining / (session.minutes * 60000) : 1;
 
 function clockText(milliseconds) {
   const seconds = Math.ceil(milliseconds / 1000);
@@ -30,7 +32,7 @@ export class FocusView {
       const { remaining } = timerReading(session, this.timer.now());
       if (remaining > 0) {
         this.clearConfirmation();
-        this.fullscreen.open(clockText(remaining), sessionSubject(session));
+        this.fullscreen.open(clockText(remaining), sessionSubject(session), remainingFraction(session, remaining), awaySummary(session));
       }
     });
     this.error = '';
@@ -61,6 +63,7 @@ export class FocusView {
 
   async entered() {
     this.clearConfirmation();
+    if (this.leaving) await this.leaving;
     if (this.pending) await this.pending;
     await this.run(async () => {
       await this.timer.refresh();
@@ -69,6 +72,15 @@ export class FocusView {
       return this.timer.advance(true);
     });
     this.renderRecords(this.source.snapshot());
+  }
+
+  // 页面转到后台（切 App、锁屏）时调用，只记时刻；回来时由 entered → advance 结算离开时长。
+  left() {
+    if (this.closed) return Promise.resolve();
+    const at = this.timer.now();
+    const leaving = Promise.resolve(this.leaving).then(() => this.timer.left(at)).catch(() => {});
+    this.leaving = leaving.then(() => { if (this.leaving === leaving) this.leaving = null; });
+    return this.leaving;
   }
 
   stopTicks() { clearTimeout(this.tick); this.tick = null; }
@@ -146,9 +158,10 @@ export class FocusView {
   renderClock() {
     const { session, workMinutes, breakMinutes, offer } = this.timer.state;
     const value = session ? timerReading(session, this.timer.now()).remaining : (offer ? breakMinutes : workMinutes) * 60000;
-    const clock = clockText(value);
+    const clock = clockText(value), away = awaySummary(session);
     this.$('time').textContent = clock;
-    if (this.fullscreen.active) this.fullscreen.update(clock, sessionSubject(session));
+    if (this.$('away').textContent !== away) { this.$('away').textContent = away; this.$('away').hidden = !away; }
+    if (this.fullscreen.active) this.fullscreen.update(clock, sessionSubject(session), remainingFraction(session, value), away);
   }
 
   render() {
@@ -270,7 +283,7 @@ export class FocusView {
         time.textContent = r.start.slice(11, 16);
         time.setAttribute('datetime', r.start.replace(' ', 'T'));
         label.textContent = (r.link.includes('|') && r.link.slice(r.link.indexOf('|') + 1)) || r.task || r.kind;
-        detail.textContent = r.kind + ' · ' + r.status + ' · ' + r.minutes + ' 分钟';
+        detail.textContent = [r.kind, r.status, r.minutes + ' 分钟', r.note].filter(Boolean).join(' · ');
         row.append(time, label, detail); return row;
       }));
       if (!recent.length) message = '今天还没有记录。';

@@ -9,8 +9,8 @@
 .goal-cell { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 8px 6px; text-align: left; background: var(--goal-tint); color: var(--ink); line-height: 1.35; }
 .goal-cell.has-conflict { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 .goal-center { display: grid; place-items: center; background: var(--hover); color: var(--ink); font-size: clamp(1.125rem, 6vw, 2rem); font-weight: 700; font-variant-numeric: tabular-nums; }
-.goal-annual-center { align-content: center; }
-.goal-annual-center span { color: var(--caption); font-size: .875rem; font-weight: 400; }
+.goal-center-progress { display: flex; align-items: baseline; gap: 4px; color: var(--caption); font-size: .75rem; font-weight: 400; }
+.goal-center-progress strong { color: var(--ink); font-size: .9375rem; }
 .goal-cell-title { display: flex; align-items: baseline; justify-content: space-between; gap: 3px; color: var(--goal-color); font-size: .8125rem; }
 .goal-cell-title strong, .goal-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .goal-count { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }

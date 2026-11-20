@@ -26,6 +26,9 @@ export class FocusFullscreen {
     this.time = get('fullscreen-time');
     this.subject = get('fullscreen-subject');
     this.wakeMessage = get('fullscreen-wake');
+    this.arc = get('fullscreen-arc');
+    this.head = get('fullscreen-head');
+    this.away = get('fullscreen-away');
     this.requestId = 0;
     this.visibilityChanged = () => {
       if (!this.active) return;
@@ -77,23 +80,34 @@ export class FocusFullscreen {
 
   get active() { return this.dialog.open; }
 
-  update(clock, subject) {
+  // fraction：剩余占整轮的比例（1 → 0），圆环随之变短；away：本轮离开过的说明。
+  update(clock, subject, fraction = 1, away = '') {
+    const left = Math.max(0, Math.min(1, Number.isFinite(fraction) ? fraction : 1));
+    // 页面的安全策略（CSP style-src 'self'）不允许写 style 属性，只能经 CSSOM 设置。
+    this.arc?.style?.setProperty('stroke-dashoffset', (1000 * (1 - left)).toFixed(1));
+    this.head?.style?.setProperty('transform', 'rotate(' + (360 * left).toFixed(2) + 'deg)');
+    if (this.away && this.away.textContent !== away) { this.away.textContent = away; this.away.hidden = !away; }
     this.time.textContent = clock;
     const [minutes, seconds] = clock.split(':').map(Number);
     this.time.setAttribute('aria-label', '剩余 ' + minutes + ' 分 ' + seconds + ' 秒');
     if (this.subject.textContent !== subject) this.subject.textContent = subject;
   }
 
-  open(clock, subject) {
+  open(clock, subject, fraction = 1, away = '') {
     if (this.active) return;
-    this.update(clock, subject);
+    this.dialog.removeAttribute('data-animate');
+    this.update(clock, subject, fraction, away);
     this.dialog.showModal();
+    // 先画到当前位置再打开过渡，避免打开时圆环从满圈转过来。
+    clearTimeout(this.animateTimer);
+    this.animateTimer = setTimeout(() => { if (this.active) this.dialog.setAttribute('data-animate', ''); }, 100);
     this.time.focus({ preventScroll: true });
     this.requestWakeLock();
   }
 
   close() {
     if (!this.active) return;
+    clearTimeout(this.animateTimer);
     this.cancelHold();
     this.showExitMessage('');
     this.hideExitConfirmation();

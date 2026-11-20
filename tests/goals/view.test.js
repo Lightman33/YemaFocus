@@ -27,7 +27,7 @@ for (const [hash, prefix] of [['#goals', ''], ['#sim/goals', 'sim/']]) {
     const root = b.node(GOALS_ROOT);
     assert.match(root.textContent, /第一次同步/);
     assert.equal(root.querySelector('.goal-grid').children.length, 9);
-    assert.equal(root.querySelector('.goal-grid').children[4].className, 'goal-center goal-annual-center');
+    assert.equal(root.querySelector('.goal-grid').children[4].className, 'goal-center goal-plan-center goal-annual-center');
     click(byLabel(root, '5 年'));
     assert.match(root.querySelector('.goal-center').textContent, /\d{4}–\d{4}/);
     assert.equal(byLabel(root, '编辑愿景'), undefined);

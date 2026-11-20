@@ -170,3 +170,22 @@ test('两台设备改不同长期目标可同步，同一条长期目标提示�
   assert.equal(goal(plannerOf(b), 't44-five').done, true);
   assert.deepEqual(b.source.snapshot().conflicts, []);
 });
+
+test('v3.0.1 年度宫格中间写愿景：存在年度领域行，空白即删除，旧格式往返保留', async () => {
+  const f = await fixture();
+  const { actions } = f;
+  await actions.saveVision(1, 2031, '');
+  assert.equal(plannerOf(f).goalYears?.some(row => row.year === 2031) ?? false, false);
+  await actions.saveVision(1, 2031, '  虚构年度愿景\r\n第二行  ', f.source.snapshot().editToken);
+  const row = plannerOf(f).goalYears.find(entry => entry.year === 2031);
+  assert.equal(row.vision, '虚构年度愿景\n第二行');
+  assert.equal(row.names.length, 8);
+  assert.equal(planLocked(plannerOf(f), 1, 2031), false);
+  const projected = stateToPlanner(await f.state());
+  assert.equal(projected.goalYears.find(entry => entry.year === 2031).vision, '虚构年度愿景\n第二行');
+  assert.equal(stateToPlanner(plannerToState(projected, 'pc')).goalYears.find(entry => entry.year === 2031).vision, '虚构年度愿景\n第二行');
+  await actions.saveVision(1, 2031, '   ');
+  const cleared = plannerOf(f).goalYears.find(entry => entry.year === 2031);
+  assert.equal(Object.hasOwn(cleared, 'vision'), false);
+  assert.equal(cleared.names.length, 8);
+});

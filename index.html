@@ -67,6 +67,7 @@
         <div id="focus-phase" class="focus-phase">番茄钟</div>
         <div id="focus-time" class="focus-time" role="timer">25:00</div>
         <p id="focus-subject" class="focus-subject" hidden></p>
+        <p id="focus-away" class="caption focus-away" hidden></p>
         <p id="focus-message" class="focus-message" role="status" hidden></p>
         <p id="focus-gate" class="caption">正在打开本机存储…</p>
         <p id="focus-error" class="error-text" role="alert" hidden></p>
@@ -124,7 +125,9 @@
           <li>用「专注模式」静音通知，在「设置 → 专注模式」允许必须及时收到的联系人和 App。</li>
           <li>在「设置 → 屏幕时间」限制容易分心的 App。</li>
           <li>野马网页无法自动开启专注模式。可从控制中心手动开启，或在系统里设定时。</li>
-          <li>iPhone 锁屏或切到别的应用时不会响铃，回来会自动记上。</li>
+          <li><strong>让别的 App 打不开</strong>：用「引导式访问」。在「设置 → 辅助功能 → 引导式访问」打开它并设好密码；开始番茄、点「全屏专注」后，连按三下侧边按钮（有主屏幕按钮的旧机型按主屏幕按钮），轻点「开始」。结束时再连按三下、输入密码，轻点「结束」。会话设置里还能设「时间限制」。注意：引导式访问期间不能用车祸检测和拨打紧急电话。</li>
+          <li>番茄进行中切到别的 App 或锁屏超过 3 秒，回来时会提示离开了多久，并把“中途离开几次、共多久”记在这条番茄的备注里。</li>
+          <li>iPhone 锁屏或切到别的应用时不会响铃，回来会自动记上到点的番茄。</li>
         </ul>
       </details>
     </section>
@@ -187,7 +190,7 @@
         <p class="caption">将清除当前浏览器中本站的状态、待上传快照、设置和令牌。仓库里的文件不会被删除。</p>
       </div>
       <div id="sim-controls" class="card" hidden><h2>模拟仓库（仅供验收）</h2><button id="sim-task" type="button" class="secondary">模拟电脑改一条任务并发布</button><button id="sim-review" type="button" class="secondary">模拟电脑改今天复盘的一个模块并发布</button><button id="sim-habit" type="button" class="secondary">模拟电脑打卡今天的阅读习惯并发布</button><button id="sim-network" type="button" class="secondary">模拟断网</button><p id="sim-result" role="status"></p></div>
-      <p class="version">版本 <span id="app-version">3.0.0</span> · 本机优先</p>
+      <p class="version">版本 <span id="app-version">3.0.1</span> · 本机优先</p>
     </section>
   </main>
 
@@ -202,8 +205,26 @@
 
   <div id="task-snackbar" class="task-snackbar" role="status" aria-live="polite" hidden><span id="task-snack-text"></span><button id="task-undo" type="button" hidden>撤销</button></div>
   <dialog id="focus-fullscreen" class="focus-fullscreen" aria-label="全屏专注">
-    <div id="focus-fullscreen-time" class="focus-fullscreen-time" role="timer" tabindex="-1"></div>
-    <p id="focus-fullscreen-subject" class="focus-fullscreen-subject"></p>
+    <div class="focus-fullscreen-stage">
+      <svg class="focus-fullscreen-dial" viewBox="0 0 220 220" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="focus-dial-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#9af3cf"></stop>
+            <stop offset="1" stop-color="#3dbb98"></stop>
+          </linearGradient>
+        </defs>
+        <circle class="focus-dial-ticks" cx="110" cy="110" r="106" pathLength="600"></circle>
+        <circle class="focus-dial-track" cx="110" cy="110" r="94"></circle>
+        <circle id="focus-fullscreen-arc" class="focus-dial-arc" cx="110" cy="110" r="94" pathLength="1000"></circle>
+        <g id="focus-fullscreen-head" class="focus-dial-head"><circle cx="110" cy="16" r="6"></circle></g>
+      </svg>
+      <div class="focus-fullscreen-center">
+        <div class="focus-fullscreen-phase">专注中</div>
+        <div id="focus-fullscreen-time" class="focus-fullscreen-time" role="timer" tabindex="-1"></div>
+        <p id="focus-fullscreen-subject" class="focus-fullscreen-subject"></p>
+      </div>
+    </div>
+    <p id="focus-fullscreen-away" class="focus-fullscreen-away" hidden></p>
     <button id="focus-fullscreen-exit" class="focus-fullscreen-exit" type="button" aria-describedby="focus-fullscreen-exit-message">
       <svg class="focus-fullscreen-ring" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <circle cx="16" cy="16" r="13" pathLength="100"></circle>
@@ -220,6 +241,7 @@
       </div>
     </div>
     <p id="focus-fullscreen-wake" class="focus-fullscreen-wake" role="status" hidden></p>
+    <p class="focus-fullscreen-tip">想让别的 App 打不开：先在 设置→辅助功能→引导式访问 打开，再连按三下侧边按钮</p>
   </dialog>
   <dialog id="task-sheet" class="task-sheet" aria-labelledby="task-sheet-title">
     <div class="sheet-heading"><h2 id="task-sheet-title">任务详情</h2><button id="task-sheet-close" class="secondary" type="button" aria-label="关闭任务面板">关闭</button></div>

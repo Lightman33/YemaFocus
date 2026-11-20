@@ -7,6 +7,16 @@ export const ZONE_TIP = '请先在设置里选择软件时区。';
 const validMinutes = (n, max) => Number.isInteger(n) && n > 0 && n <= max;
 const preferences = settings => ({ ...DEFAULTS, ...settings.focusTimer });
 const eligible = (s, device) => s.joined === true && s.deviceId === device;
+// 切到别的 App 或锁屏不足 3 秒（如误触、看一眼通知）不算离开。
+export const AWAY_MIN_MS = 3000;
+
+export function durationText(milliseconds) {
+  const seconds = Math.max(1, Math.round(milliseconds / 1000)), minutes = Math.floor(seconds / 60), rest = seconds % 60;
+  return minutes ? minutes + ' 分' + (rest ? ' ' + rest + ' 秒' : '钟') : rest + ' 秒';
+}
+export function awaySummary(session) {
+  return session?.awayCount ? '中途离开 ' + session.awayCount + ' 次，共 ' + durationText(session.awayMs) : '';
+}
 
 export function timerReading(session, now) {
   const duration = session.minutes * MINUTE;
@@ -68,6 +78,26 @@ export class FocusTimer {
     } });
   }
 
+  // 网页挡不住切换 App；离开时记下时刻，回来后把离开的次数和时长记在这个番茄上。
+  async left(now = this.now()) {
+    const session = this.state.session;
+    if (session?.kind !== 'work' || session.pausedAt !== null || session.ending || session.awaySince != null) return;
+    if (session.device !== this.device || now >= timerReading(session, now).deadline) return;
+    await this.save({ session: { ...session, awaySince: now } }, false);
+  }
+
+  async returned() {
+    const session = this.state.session;
+    if (!session || session.awaySince == null || session.ending || session.device !== this.device) return null;
+    const now = this.now(), away = Math.max(0, Math.min(now, timerReading(session, now).deadline) - session.awaySince);
+    const counted = away >= AWAY_MIN_MS;
+    const next = { ...session, awaySince: null };
+    if (counted) Object.assign(next, { awayCount: (session.awayCount || 0) + 1, awayMs: (session.awayMs || 0) + away });
+    if (!(await this.save({ session: next }, false))) return null;
+    if (counted) this.notice = '刚才离开了 ' + durationText(away) + '，已记在这个番茄上';
+    return counted ? away : null;
+  }
+
   async act(action, { taskId, subject, longTermItem } = {}) {
     const result = await this.advance(true);
     if (result || this.state.session?.ending) return result;
@@ -100,7 +130,8 @@ export class FocusTimer {
 
   async end(session, at, status, automatic = false, recovered = false) {
     const elapsed = timerReading(session, at).elapsed;
-    const note = recovered ? (session.kind === 'work' ? '程序关闭期间到点' : '关机/退出期间完成') : '';
+    const note = [recovered ? (session.kind === 'work' ? '程序关闭期间到点' : '关机/退出期间完成') : '', awaySummary(session)]
+      .filter(Boolean).join('；');
     await this.save({ session: { ...session, zone: this.source.snapshot().timeZone || session.zone,
       ending: { at, elapsed, status, note, automatic } } });
   }
@@ -109,6 +140,12 @@ export class FocusTimer {
     const session = this.state.session;
     if (!session || session.device !== this.device) return null;
     if (session.ending) return this.complete();
+    if (session.awaySince != null) {
+      // 别的标签页刚改过计时会让这次保存落空；用刚读到的最新状态再结算一次。
+      if (!(await this.returned()) && this.state.session?.awaySince != null) await this.returned();
+      if (this.state.session?.awaySince != null) return null;
+      return this.advance(recovered);
+    }
     const now = this.now(), { deadline } = timerReading(session, now);
     if (session.pausedAt !== null || now < deadline) return null;
     await this.end(session, deadline, '完成', true, recovered);
@@ -121,7 +158,9 @@ export class FocusTimer {
     const { automatic, status } = session.ending;
     const saved = await this.source.saveFocusRecord(session, focusRecord(session));
     if (!saved || !(await this.save({ session: null, offer: session.kind === 'work' && status === '完成' }))) return null;
-    this.notice = ({ 完成: session.kind === 'work' ? '专注完成' : '休息完成', 放弃: '已记为放弃', 跳过: '已跳过休息' })[status];
+    const away = awaySummary(session);
+    this.notice = ({ 完成: session.kind === 'work' ? '专注完成' : '休息完成', 放弃: '已记为放弃', 跳过: '已跳过休息' })[status] +
+      (away ? '（' + away + '）' : '');
     return { automatic, message: this.notice };
   }
 }

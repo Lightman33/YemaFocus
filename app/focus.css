@@ -35,34 +35,75 @@
 }
 
 .focus-fullscreen {
+  --dial: min(84vw, 50vh, 25rem);
   position: fixed; inset: 0; margin: 0; width: 100%; height: 100dvh; max-width: none; max-height: none;
-  border: 0; border-radius: 0; color: #ecf6f1; background: #080f10; color-scheme: dark;
+  border: 0; border-radius: 0; color: #ecf6f1; color-scheme: dark;
+  background: radial-gradient(120% 70% at 50% 36%, #123029 0%, #0b1a19 42%, #060b0c 100%) #060b0c;
   padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
     max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  text-align: center; overscroll-behavior: contain;
+  text-align: center; overscroll-behavior: contain; overflow-y: auto;
 }
-.focus-fullscreen[open] { display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 2.7vh, 20px); }
+.focus-fullscreen::backdrop { background: #060b0c; }
+.focus-fullscreen[open] { display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 2.4vh, 18px); }
+.focus-fullscreen-stage {
+  position: relative; flex: none; width: var(--dial); height: var(--dial); margin-top: auto;
+  display: grid; place-items: center;
+}
+.focus-fullscreen-stage::before {
+  content: ''; position: absolute; inset: 14%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(119, 229, 186, .16), rgba(119, 229, 186, 0) 70%);
+  animation: focus-breathe 6s ease-in-out infinite;
+}
+@keyframes focus-breathe { 0%, 100% { opacity: .45; transform: scale(.94); } 50% { opacity: 1; transform: scale(1.06); } }
+.focus-fullscreen-dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.focus-dial-ticks { fill: none; stroke: rgba(236, 246, 241, .2); stroke-width: 3; stroke-dasharray: .8 9.2; transform: rotate(-90deg); transform-origin: 110px 110px; }
+.focus-dial-track { fill: none; stroke: rgba(236, 246, 241, .08); stroke-width: 9; }
+.focus-dial-arc {
+  fill: none; stroke: url(#focus-dial-gradient); stroke-width: 9; stroke-linecap: round;
+  stroke-dasharray: 1000; stroke-dashoffset: 0; transform: rotate(-90deg); transform-origin: 110px 110px;
+  filter: drop-shadow(0 0 6px rgba(119, 229, 186, .45));
+}
+.focus-dial-head { transform-origin: 110px 110px; }
+.focus-dial-head circle { fill: #ecfff7; filter: drop-shadow(0 0 5px rgba(154, 243, 207, .9)); }
+.focus-fullscreen[data-animate] .focus-dial-arc { transition: stroke-dashoffset 1s linear; }
+.focus-fullscreen[data-animate] .focus-dial-head { transition: transform 1s linear; }
+.focus-fullscreen-center {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: 72%; min-width: 0;
+}
+.focus-fullscreen-phase { color: #8fe9c4; font-size: clamp(.875rem, calc(var(--dial) * .055), 1.125rem); font-weight: 600; letter-spacing: .3em; padding-left: .3em; }
 .focus-fullscreen-time {
-  margin-top: auto; font-size: clamp(3rem, min(19vw, 24vh), 9rem);
-  line-height: 1.05; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: calc(var(--dial) * .25); line-height: 1; font-weight: 300; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';
 }
+.focus-fullscreen-time:focus { outline: none; }
 .focus-fullscreen-subject {
-  margin: 0; max-width: 42ch; font-size: clamp(1rem, 4vw, 1.5rem); color: #c7d9d2;
-  overflow-wrap: anywhere;
+  margin: 4px 0 0; max-width: 100%; font-size: clamp(1rem, calc(var(--dial) * .062), 1.25rem); color: #c7d9d2;
+  overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.focus-fullscreen-away {
+  margin: 0; padding: 4px 12px; border-radius: 999px; background: rgba(247, 210, 157, .12); color: #f7d29d; font-size: .9375rem;
 }
 .focus-fullscreen-exit {
-  display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;
-  background: #152323; color: #ecf6f1; border-color: #718983;
+  display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; margin-top: clamp(4px, 2vh, 16px);
+  background: rgba(236, 246, 241, .05); color: #ecf6f1; border-color: #718983; border-radius: 999px; padding-inline: 18px 22px;
   touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .focus-fullscreen :focus-visible { outline: 3px solid #77e5ba; outline-offset: 3px; }
 .focus-fullscreen-ring { flex: none; transform: rotate(-90deg); fill: none; stroke: #718983; stroke-width: 2.5; }
 .focus-fullscreen-progress { stroke: #77e5ba; stroke-dasharray: 100; stroke-dashoffset: 100; }
 .focus-fullscreen-exit[data-holding] .focus-fullscreen-progress { stroke-dashoffset: 0; transition: stroke-dashoffset 2s linear; }
-.focus-fullscreen-options { width: min(100%, 26rem); margin-bottom: auto; }
-.focus-fullscreen-alt-exit { background: transparent; color: #c7d9d2; font-size: .875rem; }
+.focus-fullscreen-options { width: min(100%, 26rem); }
+.focus-fullscreen-alt-exit { background: transparent; border-color: transparent; color: #b4c8c1; font-size: .875rem; }
 .focus-fullscreen-exit-message { min-height: 1.65em; margin: 0; color: #c7d9d2; }
 .focus-fullscreen-options .secondary { background: #152323; color: #ecf6f1; border-color: #718983; }
 .focus-fullscreen-options .primary { background: #77e5ba; color: #080f10; }
-@media (prefers-reduced-motion: reduce) { .focus-fullscreen-ring { display: none; } }
+@media (prefers-reduced-motion: reduce) { .focus-fullscreen-ring { display: none; } .focus-fullscreen-stage::before { animation: none; } }
 .focus-fullscreen-wake { margin: 0; max-width: 36ch; color: #f7d29d; font-size: 1rem; }
+.focus-fullscreen-tip { margin: auto 0 0; max-width: 34ch; color: #9bb1aa; font-size: .8125rem; line-height: 1.5; }
+@media (max-height: 520px) and (orientation: landscape) {
+  .focus-fullscreen { --dial: min(70vh, 40vw); }
+  .focus-fullscreen[open] { display: grid; grid-template-columns: auto minmax(0, 22rem); grid-auto-rows: min-content; column-gap: 32px; align-content: center; justify-content: center; }
+  .focus-fullscreen-stage { grid-row: 1 / span 6; margin: 0; }
+  .focus-fullscreen-tip { display: none; }
+}

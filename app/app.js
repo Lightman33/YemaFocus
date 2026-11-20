@@ -203,6 +203,7 @@ async function background() {
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden) {
     focusView?.stopTicks();
+    focusView?.left();
     $('token').type = 'password'; $('toggle-token').textContent = '显示令牌'; $('toggle-token').setAttribute('aria-pressed', 'false');
     await background();
   } else {

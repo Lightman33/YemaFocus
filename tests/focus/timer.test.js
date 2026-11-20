@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { FocusTimer, JOIN_TIP, timerReading } from '../../app/focus-timer.js';
+import { awaySummary, durationText, FocusTimer, JOIN_TIP, timerReading } from '../../app/focus-timer.js';
 import { focusRecord, MINUTE, recordKey, recordMinutes, taskFocus, todayFocus } from '../../app/focus-records.js';
 import { createDataSource } from '../../app/datasource.js';
 import { freshRecord, MemoryStore } from '../../app/store.js';
@@ -184,4 +184,51 @@ test('旧手机已保存带空格的原始键、尚未清理会话时，升级�
   const reopened = await f.reopen();
   assert.equal((await reopened.timer.advance(true)).message, '专注完成');
   assert.deepEqual(reopened.source.snapshot().records.map(row => row.id), [old.id]);
+});
+
+test('v3.0.1 番茄中切走：3 秒以上记离开次数和时长，写进记录备注；暂停和休息时不算', async () => {
+  const { timer, source, add, reopen } = await fixture();
+  assert.equal(durationText(45000), '45 秒');
+  assert.equal(durationText(130000), '2 分 10 秒');
+  assert.equal(durationText(180000), '3 分钟');
+  await timer.act('start', { subject: '虚构读书' });
+  add(MINUTE);
+  await timer.left();
+  add(2 * MINUTE + 10000);
+  assert.equal(await timer.advance(true), null);
+  assert.equal(timer.state.session.awayCount, 1);
+  assert.equal(timer.state.session.awaySince, null);
+  assert.equal(timer.notice, '刚才离开了 2 分 10 秒，已记在这个番茄上');
+  await timer.left();
+  add(2000);
+  await timer.advance(true);
+  assert.equal(timer.state.session.awayCount, 1, '不足 3 秒不算');
+  await timer.act('pause');
+  await timer.left();
+  assert.equal(timer.state.session.awaySince ?? null, null, '暂停时离开不算');
+  add(10 * MINUTE);
+  await timer.act('resume');
+  // 页面在后台被系统关掉：离开时刻已存盘，重开后照样结算，到点部分只算到截止时刻。
+  await timer.left();
+  add(60 * MINUTE);
+  const again = await reopen();
+  assert.deepEqual(await again.timer.advance(true), { automatic: true, message: '专注完成（中途离开 2 次，共 23 分 58 秒）' });
+  const row = again.source.snapshot().records.at(-1);
+  assert.equal(row.columns[5], '完成');
+  assert.equal(row.columns[6], '程序关闭期间到点；中途离开 2 次，共 23 分 58 秒');
+  await again.timer.act('rest');
+  await again.timer.left();
+  assert.equal(again.timer.state.session.awaySince ?? null, null, '休息时离开不算');
+  assert.equal(awaySummary(null), '');
+  assert.ok(source);
+});
+
+test('v3.0.1 离开后放弃，放弃记录也带离开说明', async () => {
+  const { timer, source, add } = await fixture();
+  await timer.act('start', { subject: '虚构写作' });
+  await timer.left();
+  add(5 * MINUTE);
+  await timer.advance(true);
+  assert.deepEqual(await timer.act('abandon'), { automatic: false, message: '已记为放弃（中途离开 1 次，共 5 分钟）' });
+  assert.equal(source.snapshot().records.at(-1).columns[6], '中途离开 1 次，共 5 分钟');
 });

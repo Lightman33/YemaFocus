@@ -69,6 +69,9 @@ export class GoalsView {
   }
   get editable() { return this.snapshot.joined && Boolean(this.snapshot.timeZone); }
   get plan() { return findGoalPlan(this.snapshot.planner, this.span, this.year); }
+  get vision() {
+    return (this.span === 1 ? this.snapshot.planner.goalYears?.find(row => row.year === this.year)?.vision : this.plan?.vision) || '';
+  }
   get names() {
     return this.span === 1 ? domainNames(this.snapshot.planner, this.year) : planNames(this.snapshot.planner, this.span, this.year);
   }
@@ -250,12 +253,7 @@ export class GoalsView {
     const grid = this.el('div', '', 'goal-grid'), names = this.names;
     for (const domain of positions) {
       if (domain < 0) {
-        if (this.span === 1) {
-          const annual = (this.snapshot.planner.goals || []).filter(goal => samePeriod(goal, 1, this.year));
-          const cell = this.el('div', '', 'goal-center goal-annual-center');
-          if (annual.length) cell.append(this.el('strong', annual.filter(goal => goal.done).length + ' / ' + annual.length), this.el('span', '已完成'));
-          grid.append(cell);
-        } else grid.append(this.visionCell(conflicts.names.length > 0));
+        grid.append(this.visionCell(conflicts.names.length > 0));
         continue;
       }
       const goals = this.periodGoals(domain);
@@ -280,14 +278,23 @@ export class GoalsView {
   }
 
   visionCell(blocked) {
-    const vision = this.plan?.vision || '';
-    const canEdit = this.editable && !blocked;
-    const className = 'goal-center goal-plan-center';
-    const period = rangeLabel(this.year, this.span), action = canEdit ? '编辑愿景' : '查看愿景';
-    const label = period + ' 愿景：' + (vision || '尚未填写') + '，' + action;
+    const vision = this.vision;
+    const canEdit = this.editable && !blocked && this.yearReady;
+    const className = 'goal-center goal-plan-center' + (this.span === 1 ? ' goal-annual-center' : '');
+    const period = this.span === 1 ? this.year + ' 年' : rangeLabel(this.year, this.span), action = canEdit ? '编辑愿景' : '查看愿景';
+    const annual = this.span === 1 ? (this.snapshot.planner.goals || []).filter(goal => samePeriod(goal, 1, this.year)) : [];
+    const done = annual.filter(goal => goal.done).length;
+    const label = period + ' 愿景：' + (vision || '尚未填写') + (annual.length ? '，目标已完成 ' + done + ' / ' + annual.length : '') + '，' + action;
     const cell = canEdit || vision ? this.button('', label,
       () => this.openEditor(canEdit ? 'vision' : 'readVision'), { key: 'vision', className }) : this.el('div', '', className);
-    cell.append(this.el('strong', period), this.el('span', vision || (canEdit ? '写下愿景' : ''), 'goal-vision'));
+    // 年度宫格的年份已在标题里，中间格只放愿景和完成数。
+    if (this.span !== 1) cell.append(this.el('strong', period));
+    if (vision || canEdit) cell.append(this.el('span', vision || '写下愿景', 'goal-vision' + (vision ? '' : ' goal-vision-empty')));
+    if (annual.length) {
+      const progress = this.el('span', '', 'goal-center-progress');
+      progress.append(this.el('strong', done + ' / ' + annual.length), this.el('span', '已完成'));
+      cell.append(progress);
+    }
     return cell;
   }
 
@@ -470,10 +477,10 @@ export class GoalsView {
       save = () => this.actions.changeStart(span, year, Number(start.value), this.currentYear, observed);
       saved = () => this.navigate({ year: Number(start.value) });
     } else if (mode === 'vision') {
-      const vision = field('goal-vision', rangeLabel(year, span) + ' 的愿景', this.plan?.vision || '', true);
+      const vision = field('goal-vision', (span === 1 ? year + ' 年' : rangeLabel(year, span)) + ' 的愿景', this.vision, true);
       save = () => this.actions.saveVision(span, year, vision.value, observed);
     } else if (reading) {
-      form.append(this.el('p', this.plan?.vision || '', 'goal-notes'));
+      form.append(this.el('p', this.vision, 'goal-notes'));
     } else {
       const title = field('goal-title', '目标标题', goal?.title || '');
       const notes = field('goal-notes', '备注', goal?.notes || '', true);

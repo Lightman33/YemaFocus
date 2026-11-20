@@ -51,12 +51,14 @@ test('示例模式今日数据、后台到点、前台铃声和标题', async t 
   b.globals.document.hidden = true; b.globals.document.emit('visibilitychange');
   now += 5 * 60000;
   b.globals.document.hidden = false; b.globals.document.emit('visibilitychange');
-  await until(() => b.node('focus-message').textContent === '专注完成');
+  // 开始后切走 5 分钟：到点照记，同时标出中途离开（网页分不清锁屏和切 App，两者都算）。
+  await until(() => b.node('focus-message').textContent === '专注完成（中途离开 1 次，共 1 分钟）');
   assert.match(b.globals.document.title, /^专注完成/);
   assert.equal(sounds, 0);
   assert.equal(app.dataSource.snapshot().records.length, before + 1);
   const row = app.dataSource.snapshot().records.find(r => r.columns[4] === '虚构手机记录');
   assert.deepEqual(row.columns.slice(1, 4), ['2026-11-03 12:00:00', '2026-11-03 12:01:00', '1']);
+  assert.equal(row.columns[6], '程序关闭期间到点；中途离开 1 次，共 1 分钟');
   b.node('focus-rest').emit('click'); await until(() => b.node('focus-phase').textContent === '休息中');
   await app.changePage('tasks');
   now += 60000;
@@ -82,8 +84,9 @@ test('T46-12 专注标题与其他三页同字号，iPhone 设置和锁屏提示
   assert.equal(guide.getAttribute('open'), null);
   assert.equal(guide.querySelector('summary').textContent, 'iPhone 防打扰设置');
   const points = guide.querySelectorAll('li').map(node => node.textContent);
-  assert.equal(points.length, 4);
-  for (const [line, expected] of [/专注模式.*静音通知/, /屏幕时间.*限制/, /无法自动开启专注模式/, /锁屏.*不会响铃/].entries()) {
+  assert.equal(points.length, 6);
+  for (const [line, expected] of [/专注模式.*静音通知/, /屏幕时间.*限制/, /无法自动开启专注模式/,
+    /引导式访问.*辅助功能.*连按三下侧边按钮.*紧急电话/, /3 秒.*离开.*备注/, /锁屏.*不会响铃/].entries()) {
     assert.match(points[line], expected);
   }
   const css = await readFile(new URL('../../app/focus.css', import.meta.url), 'utf8');

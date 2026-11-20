@@ -67,6 +67,14 @@ export class GoalActions {
   saveVision(span, year, vision, baseToken) {
     vision = vision.trim().replace(/\r\n?/g, '\n');
     return this.source.change('已保存愿景', planner => {
+      if (span === 1) {
+        // 年度愿景跟年度领域名称存在同一行（goalYears），旧版本会原样保留这个字段。
+        let row = planner.goalYears?.find(entry => entry.year === year);
+        if (!vision && !row?.vision) return;
+        if (!row) { (planner.goalYears ||= []).push({ year, names: domainNames(planner, year) }); row = planner.goalYears.at(-1); }
+        if (vision) row.vision = vision; else delete row.vision;
+        return;
+      }
       if (!vision && !findGoalPlan(planner, span, year)) return;
       const previous = ensurePlan(planner, span, year);
       if (vision || previous.vision.trim()) lockPlan(planner, span, year);
