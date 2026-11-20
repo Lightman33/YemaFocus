@@ -7,12 +7,13 @@
 // attachEngine 与来源共用store：封套模式调用commit(state,keys)，原始示例模式仍update。
 // resolve/subscribe 原用法不变，第一次读取仍调用snapshot。
 import { stateToPlanner, applyPlannerChanges, readEntity as convertReadEntity, applyEntityChange } from '../sync/convert.js';
-import { merge, unitInfo, branchKey } from '../sync/merge.js';
+import { merge, unitInfo, branchKey, emptyState } from '../sync/merge.js';
 import { resolveUnit, updateUnit } from '../sync/edit.js';
 import { canonical, encodeLegacy, decodeLegacy, unitKey } from '../sync/canonical.js';
 import { copy, repeating, REPEAT_READONLY } from './task-model.js';
 import { StoreError } from './store.js';
 import { bucketOf } from '../sync/pack.js';
+import { recordKey } from './focus-records.js';
 
 export class DataError extends StoreError {
   constructor(message) { super('data'); this.message = message; this.name = 'DataError'; }
@@ -164,7 +165,12 @@ function replayDiff(target, before, after) {
         const rowsById = new Map(target[key].map(row => [row.id, row])), wanted = new Set(b.map(row => row.id));
         target[key] = [...b.filter(row => rowsById.has(row.id)).map(row => rowsById.get(row.id)), ...target[key].filter(row => !wanted.has(row.id))];
       }
-    } else if (a && b && current && !Array.isArray(a) && !Array.isArray(b) && typeof a === 'object' && typeof b === 'object' && typeof current === 'object') replayDiff(current, a, b);
+    } else if (key === 'checks' && [a || [], b, current].every(v => Array.isArray(v) && v.every(day => typeof day === 'string'))) {
+      // 同设备另一个标签页也可打卡；只重放本次增减日期，不能用旧数组盖掉其他日期。
+      const removed = new Set((a || []).filter(day => !b.includes(day))), added = b.filter(day => !(a || []).includes(day));
+      target[key] = [...new Set([...current.filter(day => !removed.has(day)), ...added])].sort();
+    } else if (key === 'checkEdits' && b && current && !Array.isArray(b) && !Array.isArray(current)) replayDiff(current, a || {}, b);
+    else if (a && b && current && !Array.isArray(a) && !Array.isArray(b) && typeof a === 'object' && typeof b === 'object' && typeof current === 'object') replayDiff(current, a, b);
     else target[key] = copy(b);
   }
 }
@@ -396,6 +402,61 @@ export class DataSource {
     if (!this.snapshot().joined) throw new DataError('先在设置里连接并完成第一次同步');
     if (!this.snapshot().timeZone) throw new DataError('请先在设置里选择软件时区。');
   }
+  // 从本机待记会话生成单元。事务重试可能看到别的标签页已经记过这一轮，
+  // 也可能发现同内容的另一轮先占了这个序号；两种情况分别判定。
+  async saveFocusRecord(session, value) {
+    await this.refresh();
+    await this.ensureLoaded();
+    const device = session.device, stamp = { updatedAt: session.ending.at, focusSession: session.id };
+    const ownsSession = settings => settings.joined && settings.deviceId === device &&
+      settings.focusTimer?.session?.id === session.id && Boolean(settings.focusTimer.session.ending);
+    const recorded = unit => unit?.versions.some(v => v.sources.some(s => s.stamp.focusSession === session.id));
+    // 升级前可能已按旧列值保存，随后未能清理会话。重试也要认出这个旧键。
+    const legacyRetry = value.columns[4] !== session.subject || value.columns[7] !== session.link;
+    if (legacyRetry && Object.values(this.record.state?.units || {}).some(recorded)) return true;
+    for (let occurrence = 0; ; occurrence++) {
+      const key = await recordKey(value.day, value.columns, occurrence), bucket = bucketOf(key);
+      const known = this.record.state?.units[key];
+      if (recorded(known)) return true;
+      if (known) continue;
+      if (this.record.envelope) {
+        if (!this.engine?.commitUnits) throw new DataError('同步正在切换，请稍后重试保存番茄记录。');
+        let outcome;
+        await this.engine.commitUnits(emptyState(), [], { rebase: (latest, { settings }) => {
+          const unit = latest.units[key], state = emptyState();
+          if (recorded(unit) || legacyRetry && Object.values(latest.units).some(recorded)) outcome = 'saved';
+          else if (!ownsSession(settings)) outcome = 'changed';
+          else if (unit) outcome = 'occupied';
+          else {
+            outcome = 'saved';
+            return { state: updateUnit(state, key, device, value, stamp), keys: [key] };
+          }
+          return { state, keys: [] };
+        } });
+        await this.refresh();
+        if (outcome === 'occupied') continue;
+        return outcome === 'saved';
+      }
+      try {
+        const meta = await this.store.readMetadata(), { record } = meta;
+        if (record.state?.format === 'yema-engine-local') {
+          await this.refresh(); occurrence--; continue;
+        }
+        if (!ownsSession(record.settings)) return false;
+        const { buckets } = await this.store.readBuckets([bucket], meta.version);
+        const units = { ...buckets[bucket] };
+        if (recorded(units[key]) || legacyRetry && Object.values(units).some(recorded)) return true;
+        if (units[key]) continue;
+        units[key] = updateUnit(emptyState(), key, device, value, stamp).units[key];
+        await this.store.writeTransaction({ expectedVersion: meta.version, record, buckets: { [bucket]: units } });
+        await this.refresh();
+        return true;
+      } catch (error) {
+        if (error.code !== 'stale') throw error;
+        await this.refresh(); occurrence--;
+      }
+    }
+  }
   async change(description, mutator, { undoable = true, baseToken = null } = {}) {
     this.requireJoined();
     if (baseToken && !this.tokens.has(baseToken)) throw new DataError('编辑页面已过期，请重新打开任务。');
@@ -554,7 +615,9 @@ export class DataSource {
     if (choice.observed && !this.tokens.has(choice.observed)) throw new DataError('冲突页面已过期，请重新查看。');
     const observedState = (choice.observed && this.tokens.get(choice.observed)) || this.record.state;
     const path = JSON.parse(key);
-    const collection = { 'task-content': 'tasks', 'task-status': 'tasks', step: 'tasks', project: 'projects', 'review-module': 'reviews', 'review-title': 'reviews', 'week-field': 'weekNotes' }[path[0]];
+    const collection = { 'task-content': 'tasks', 'task-status': 'tasks', step: 'tasks', project: 'projects', 'review-module': 'reviews', 'review-title': 'reviews', 'week-field': 'weekNotes',
+      'habit-definition': 'habits', 'habit-check': 'habits', 'habit-journal': 'habits' }[path[0]];
+    if ((collection === 'habits' || path[0] === 'entity' && path[1] === 'habits') && this.snapshot().loading.habits) throw new DataError('习惯正在载入，请稍候再处理冲突。');
     const relevant = [key]; if (collection) relevant.push(unitKey('entity', collection, path[1]));
     const base = copy({ schema: 1, units: Object.fromEntries(relevant.filter(k => observedState.units[k]).map(k => [k, observedState.units[k]])), archives: {} }), info = unitInfo(base.units[key]);
     if (!info.conflict) throw new DataError('这处冲突已改变，请重新查看。');
@@ -568,16 +631,19 @@ export class DataSource {
     } else {
       const chosen = info.alternatives.find(v => branchKey(v) === choice.branch);
       if (!chosen) throw new DataError('所选版本不存在，请重新查看。');
+      if (path[0] === 'record' && chosen.deleted) throw new DataError('要删除请在电脑上撤销这条记录。');
       value = chosen.value; deleted = chosen.deleted;
     }
     const now = this.now(), stamp = { updatedAt: now, legacyUpdated: new Date(now).toISOString() }, device = this.record.settings.deviceId;
+    if (collection === 'habits') delete stamp.legacyUpdated; // 实体时间只放存在单元。
+    if (path[0] === 'habit-check') stamp.legacyCheckEdit = encodeLegacy(new Date(now).toISOString());
     let edited = resolveUnit(base, key, device, value, stamp, { deleted });
     if (collection) {
       const entityKey = unitKey('entity', collection, path[1]);
       const entity = unitInfo(base.units[entityKey]);
-      if (entity.conflict) throw new DataError('请先确认保留任务还是删除，再处理字段冲突。');
+      if (entity.conflict) throw new DataError(collection === 'habits' ? '请先确认保留习惯还是删除，再处理打卡或感想冲突。' : '请先确认保留任务还是删除，再处理字段冲突。');
       if (entity.preferred?.deleted) throw new DataError('这项内容已经删除，请重新查看。');
-      edited = updateUnit(edited, entityKey, device, true, { updatedAt: now });
+      edited = updateUnit(edited, entityKey, device, true, { updatedAt: now, ...(collection === 'habits' ? { legacyUpdated: encodeLegacy(new Date(now).toISOString()) } : {}) });
     }
     const touched = Object.keys(edited.units).filter(k => !base.units[k] || !same(base.units[k], edited.units[k]));
     if (this.engine?.commit && this.record.envelope) {

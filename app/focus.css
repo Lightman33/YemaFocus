@@ -1,0 +1,26 @@
+.focus-clock { text-align: center; }
+.focus-phase { color: var(--accent); font-weight: 700; }
+.focus-time { font-size: clamp(3.5rem, 16vw, 6.5rem); line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; }
+.focus-subject, .focus-message, .focus-recent { overflow-wrap: anywhere; }
+.focus-message, .focus-completion { background: var(--hover); color: var(--accent); font-weight: 700; }
+.focus-message { border-radius: 10px; padding: 6px 10px; }
+.focus-completion { flex: none; border-radius: 0; border-bottom: 1px solid var(--border); }
+.focus-fields { text-align: left; }
+.focus-fields label, .focus-preferences label { margin-top: 10px; }
+.focus-fields select { width: 100%; min-height: 48px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: max(1rem, 16px); }
+.focus-actions { margin-top: 16px; gap: 8px; }
+.focus-actions > button { flex-basis: 110px; }
+.focus-safari { margin-bottom: 0; }
+.focus-preferences { padding-top: 0; padding-bottom: 0; }
+.focus-preferences summary { min-height: 48px; padding: 10px 0; cursor: pointer; font-weight: 600; }
+.focus-preferences form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-bottom: 14px; }
+.focus-preferences button, #focus-preferences-message { grid-column: 1 / -1; }
+.focus-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.focus-metrics div { background: var(--hover); border-radius: 12px; padding: 10px 12px; }
+.focus-metrics dt { color: var(--caption); }
+.focus-metrics dd { margin: 0; font-size: 1.5rem; font-weight: 700; }
+.focus-recent { margin: 12px 0 0; padding: 0; list-style: none; }
+.focus-recent li { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.focus-recent small { grid-column: 2; color: var(--caption); }
+.focus-conflicts .conflict-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 375px) { .focus-clock, .focus-today { padding: 16px; } }

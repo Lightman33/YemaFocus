@@ -9,6 +9,7 @@ import { plannerToState } from '../sync/convert.js';
 import { updateUnit } from '../sync/edit.js';
 import { encodeLegacy, unitKey } from '../sync/canonical.js';
 import { ReviewText } from './review-model.js';
+import { HabitActions } from './habit-actions.js';
 export const SIM_DATABASE = 'yema-mobile-v29-sim';
 export const SIM_SETTINGS = { owner: 'fictional-owner', repo: 'sim-data', deviceName: '虚构手机' };
 export const SIM_TOKEN = 'fictional-simulation-token';
@@ -50,6 +51,11 @@ export async function createSimRepository({ now }) {
         const entry = sections.find(s => s[0] === '收获与亮点'); entry[1] = '电脑补充的虚构复盘 · ' + (++reviewEdits);
         review.content = ReviewText.compose(sections);
       });
+      return publish();
+    },
+    async editHabit() {
+      time = Math.max(time, now()) + 60001;
+      await new HabitActions(source, { now: () => time }).setCheck('demo-read', today, true);
       return publish();
     },
     dispose() { engine.dispose(); store.close(); }

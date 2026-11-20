@@ -1,5 +1,5 @@
 /* 每次外壳发布都递增 VERSION。缓存只含此清单，绝不缓存 GitHub 响应或令牌。 */
-const VERSION = '2.9.0-sync.5';
+const VERSION = '2.9.0-sync.6';
 const PREFIX = 'yema-shell:' + self.registration.scope + ':';
 const CACHE = PREFIX + VERSION;
 const SHELL_FILES = [
@@ -20,6 +20,15 @@ const SHELL_FILES = [
   './app/task-model.js',
   './app/task-actions.js',
   './app/tasks-view.js',
+  './app/habit-model.js',
+  './app/habit-actions.js',
+  './app/habit-journal.js',
+  './app/habits-view.js',
+  './app/habits.css',
+  './app/focus-records.js',
+  './app/focus-timer.js',
+  './app/focus-view.js',
+  './app/focus.css',
   './app/review-model.js',
   './app/review-actions.js',
   './app/review-view.js',

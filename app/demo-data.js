@@ -7,6 +7,7 @@ import { unitKey, encodeLegacy } from '../sync/canonical.js';
 import { makeTask, abandonTask } from './task-actions.js';
 import { addDays, weekStart } from './task-model.js';
 import { wallTime, DEFAULT_TIME_ZONE } from './datasource.js';
+import { recordKey } from './focus-records.js';
 export const DEMO_DATABASE = 'yema-mobile-v29-demo';
 export function demoState(now) {
   const timeZone = DEFAULT_TIME_ZONE, today = wallTime(now, timeZone).slice(0, 10);
@@ -42,9 +43,15 @@ export function demoState(now) {
   return state;
 }
 export async function seedDemo(store, now) {
+  const day = wallTime(now, DEFAULT_TIME_ZONE).slice(0, 10);
+  const todayRecords = await Promise.all([
+    ['番茄', day + ' 10:00:00', day + ' 10:25:00', '25', '示例事项／读书笔记', '完成', '', ''],
+    ['休息', day + ' 10:25:00', day + ' 10:30:00', '5', '短休息', '完成', '', ''],
+    ['番茄', day + ' 11:00:00', day + ' 11:17:30', '17.5', '创作练习', '完成', '', 'demo-task-7|写一段随笔']
+  ].map(async columns => ({ key: await recordKey(day, columns, 0), value: { day, columns } })));
   return store.update(record => {
     if (!record.state) { record.state = demoState(now); record.settings.joined = true; }
-    else if (!record.settings.demoReviewSeed) {
+    else if (!record.settings.demoReviewSeed || !record.settings.demoHabitSeed) {
       // 老示例库升级时只补缺少的复盘、记录和模块设置，保留已做的任务练习。
       const additions = demoState(now);
       for (const [key, value] of Object.entries(additions.units)) {
@@ -55,5 +62,9 @@ export async function seedDemo(store, now) {
       }
     }
     record.settings.demoReviewSeed = true;
+    record.settings.demoHabitSeed = true;
+    for (const { key, value } of todayRecords) if (!Object.hasOwn(record.state.units, key)) {
+      record.state = updateUnit(record.state, key, 'demo-computer', value, { updatedAt: now });
+    }
   });
 }

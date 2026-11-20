@@ -17,6 +17,8 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="stylesheet" href="./app/ui.css">
   <link rel="stylesheet" href="./app/review.css">
+  <link rel="stylesheet" href="./app/habits.css">
+  <link rel="stylesheet" href="./app/focus.css">
   <link rel="stylesheet" href="./app/sync.css">
   <script type="module" src="./app/app.js"></script>
 </head>
@@ -34,6 +36,7 @@
 
   <p id="storage-error" class="fatal" role="alert" hidden></p>
   <p id="offline-ready" class="offline-note" role="status">首次打开请保持联网，正在准备离线外壳。</p>
+  <button id="focus-completion" class="focus-completion" type="button" aria-live="polite" hidden></button>
 
   <main id="main" tabindex="-1">
     <section id="page-tasks" aria-labelledby="title-tasks" hidden>
@@ -50,6 +53,70 @@
       <button id="task-conflicts" class="conflict-banner" type="button" hidden></button>
       <p id="task-empty" class="caption" hidden>目前没有未完成的任务。在上方说一句，或打字添加。</p>
       <div id="task-list" aria-label="全部任务列表"></div>
+    </section>
+
+    <section id="page-habits" aria-labelledby="title-habits" hidden>
+      <h1 id="title-habits" tabindex="-1">习惯</h1>
+      <div id="habits-root" aria-busy="true">习惯正在载入…</div>
+    </section>
+
+    <section id="page-focus" aria-labelledby="title-focus" hidden>
+      <h1 id="title-focus" tabindex="-1">专注</h1>
+      <div id="focus-clock" class="card focus-clock" aria-busy="true">
+        <div id="focus-phase" class="focus-phase">番茄钟</div>
+        <div id="focus-time" class="focus-time" role="timer">25:00</div>
+        <p id="focus-subject" class="focus-subject" hidden></p>
+        <p id="focus-message" class="focus-message" role="status" hidden></p>
+        <p id="focus-gate" class="caption">正在打开本机存储…</p>
+        <p id="focus-error" class="error-text" role="alert" hidden></p>
+        <div id="focus-fields" class="focus-fields">
+          <label for="focus-task">关联未完成任务（选填）</label>
+          <select id="focus-task" disabled><option value="">不关联任务</option></select>
+          <div id="focus-custom">
+            <label for="focus-item">事项（选填）</label>
+            <input id="focus-item" type="text" placeholder="专注" disabled>
+          </div>
+        </div>
+        <div class="actions focus-actions">
+          <button id="focus-start" class="primary" type="button" disabled>开始</button>
+          <button id="focus-pause" class="primary" type="button" hidden>暂停</button>
+          <button id="focus-resume" class="primary" type="button" hidden>继续</button>
+          <button id="focus-early" class="secondary" type="button" hidden>提前结束</button>
+          <button id="focus-abandon" class="danger-button" type="button" hidden>放弃</button>
+          <button id="focus-rest" class="primary" type="button" hidden>开始休息</button>
+          <button id="focus-skip" class="secondary" type="button" hidden>跳过休息</button>
+          <button id="focus-retry" class="primary" type="button" hidden>重试保存</button>
+        </div>
+        <p class="caption focus-safari">iPhone 锁屏或切到别的应用时不会响铃，回来会自动记上。</p>
+      </div>
+      <details class="card focus-preferences">
+        <summary>专注与休息时长</summary>
+        <form id="focus-preferences">
+          <div>
+            <label for="focus-work-minutes">专注（分钟）</label>
+            <input id="focus-work-minutes" type="number" min="1" max="180" step="1" value="25" required>
+          </div>
+          <div>
+            <label for="focus-break-minutes">休息（分钟）</label>
+            <input id="focus-break-minutes" type="number" min="1" max="60" step="1" value="5" required>
+          </div>
+          <button id="focus-save-minutes" class="secondary" type="submit" disabled>保存时长</button>
+          <p id="focus-preferences-message" class="caption" role="status" hidden></p>
+        </form>
+      </details>
+      <div class="card focus-today" aria-labelledby="focus-today-title">
+        <h2 id="focus-today-title" tabindex="-1">今天</h2>
+        <p id="focus-today-status" class="caption">记录正在载入…</p>
+        <dl id="focus-metrics" class="focus-metrics" hidden>
+          <div><dt>番茄个数</dt><dd id="focus-count"></dd></div>
+          <div><dt>专注分钟</dt><dd id="focus-minutes"></dd></div>
+        </dl>
+        <ul id="focus-recent" class="focus-recent" aria-label="最近的专注与休息记录"></ul>
+      </div>
+      <div id="focus-conflicts" class="card focus-conflicts" hidden>
+        <h2 id="focus-conflict-title" tabindex="-1">两边都改过的记录</h2>
+        <div id="focus-conflict-items"></div>
+      </div>
     </section>
 
     <section id="page-review" aria-labelledby="title-review" hidden>
@@ -104,13 +171,15 @@
         <button id="clear-data" class="danger-button" type="button" disabled>清除本机数据</button>
         <p class="caption">将清除当前浏览器中本站的状态、待上传快照、设置和令牌。仓库里的文件不会被删除。</p>
       </div>
-      <div id="sim-controls" class="card" hidden><h2>模拟仓库（仅供验收）</h2><button id="sim-task" type="button" class="secondary">模拟电脑改一条任务并发布</button><button id="sim-review" type="button" class="secondary">模拟电脑改今天复盘的一个模块并发布</button><button id="sim-network" type="button" class="secondary">模拟断网</button><p id="sim-result" role="status"></p></div>
-      <p class="version">版本 <span id="app-version">2.9.0-sync.5</span> · 本机优先</p>
+      <div id="sim-controls" class="card" hidden><h2>模拟仓库（仅供验收）</h2><button id="sim-task" type="button" class="secondary">模拟电脑改一条任务并发布</button><button id="sim-review" type="button" class="secondary">模拟电脑改今天复盘的一个模块并发布</button><button id="sim-habit" type="button" class="secondary">模拟电脑打卡今天的阅读习惯并发布</button><button id="sim-network" type="button" class="secondary">模拟断网</button><p id="sim-result" role="status"></p></div>
+      <p class="version">版本 <span id="app-version">2.9.0-sync.6</span> · 本机优先</p>
     </section>
   </main>
 
   <nav class="bottom-nav" aria-label="主导航">
     <a href="#tasks" data-page="tasks"><span aria-hidden="true">✓</span>任务</a>
+    <a href="#habits" data-page="habits"><span aria-hidden="true">○</span>习惯</a>
+    <a href="#focus" data-page="focus"><span aria-hidden="true">◷</span>专注</a>
     <a href="#review" data-page="review"><span aria-hidden="true">↗</span>复盘</a>
     <a href="#settings" data-page="settings"><span aria-hidden="true">⚙</span>设置</a>
   </nav>

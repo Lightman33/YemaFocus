@@ -1,6 +1,6 @@
 import { openStore, requestPersistence, StoreError } from './store.js';
 import { SyncState } from './syncstate.js';
-import { Navigation } from './navigation.js';
+import { Navigation, PAGES } from './navigation.js';
 import { GitHubTransport } from '../transport/github.js';
 import { TransportError } from '../transport/transport.js';
 import { createEngine } from '../sync/engine.js';
@@ -10,6 +10,9 @@ import { createDataSource, wallTime } from './datasource.js';
 import { seedDemo, DEMO_DATABASE } from './demo-data.js';
 import { createSimRepository, SIM_DATABASE, SIM_SETTINGS, SIM_TOKEN } from './sim-repo.js';
 import { TasksView } from './tasks-view.js';
+import { HabitsView } from './habits-view.js';
+import { FocusTimer } from './focus-timer.js';
+import { FocusView, focusBell } from './focus-view.js';
 import { mountReview } from './review-view.js';
 
 const $ = id => document.getElementById(id);
@@ -17,12 +20,21 @@ export const syncState = new SyncState();
 const demoMode = /^#demo(?:\/|$)/.test(location.hash), simMode = /^#sim(?:\/|$)/.test(location.hash);
 const prefix = demoMode ? 'demo/' : simMode ? 'sim/' : '';
 export let dataSource, controller;
-let tasksView, reviewView, sim, reviewLoading, reviewUI = {}, appDisposed = false;
+let tasksView, habitsView, focusView, reviewView, sim, reviewLoading, reviewUI = {}, appDisposed = false;
 let store, saved, busy = false, storageReady = false, dirty = false, registration, updating = false;
 let navigationQueue = Promise.resolve();
 const main = $('main');
 const route = () => location.hash.replace(/^#(?:demo|sim)\/?/, '#').slice(1) || 'tasks';
 const navigation = new Navigation(route());
+function renderFocusNotice(message = focusView?.timer.notice || '') {
+  const title = (message ? message + ' · ' : '') + PAGES[navigation.current] + ' · 野马';
+  if (document.title !== title) document.title = title;
+  const completion = $('focus-completion');
+  const text = message ? message + '，查看专注页' : '', hidden = !message || navigation.current === 'focus';
+  if (completion.textContent !== text) completion.textContent = text;
+  if (completion.hidden !== hidden) completion.hidden = hidden;
+}
+$('focus-completion').addEventListener('click', () => changePage('focus'));
 for (const link of document.querySelectorAll('[data-page]')) {
   link.setAttribute('href', '#' + prefix + link.dataset.page);
   link.addEventListener('click', event => { event.preventDefault(); changePage(link.dataset.page); });
@@ -30,18 +42,18 @@ for (const link of document.querySelectorAll('[data-page]')) {
 function renderPage(page, focus = true) {
   const previous = navigation.current;
   const target = navigation.move(page, main.scrollTop);
-  for (const name of ['tasks', 'review', 'settings']) $('page-' + name).hidden = name !== target.page;
+  for (const name of Object.keys(PAGES)) $('page-' + name).hidden = name !== target.page;
   for (const link of document.querySelectorAll('[data-page]')) {
     if (link.dataset.page === target.page) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   }
-  document.title = { tasks: '任务', review: '复盘', settings: '设置' }[target.page] + ' · 野马';
+  renderFocusNotice();
   if (focus) $('title-' + target.page).focus({ preventScroll: true });
   main.scrollTop = target.scrollTop;
   if (tasksView && target.page === 'tasks' && previous !== 'tasks') tasksView.entered();
   if (target.page === 'review') reviewView?.refresh();
 }
-export async function disposeApp() { appDisposed = true; tasksView?.destroy(); reviewView?.destroy(); await controller?.dispose(); sim?.dispose(); }
-export async function flushViews() { await tasksView?.flush(); await reviewView?.flush(); }
+export async function disposeApp() { appDisposed = true; tasksView?.destroy(); habitsView?.destroy(); focusView?.destroy(); reviewView?.destroy(); await controller?.dispose(); sim?.dispose(); }
+export async function flushViews() { await tasksView?.flush(); await habitsView?.flush(); await focusView?.pending; await reviewView?.flush(); }
 export function changePage(page, fromHash = false) {
   navigationQueue = navigationQueue.catch(() => {}).then(async () => {
     if (page === navigation.current) return true;
@@ -49,7 +61,10 @@ export function changePage(page, fromHash = false) {
     try {
       await flushViews();
       if (navigation.current === 'tasks' && tasksView && !(await tasksView.leave())) throw new StoreError('write');
+      if (navigation.current === 'habits') await habitsView?.leave();
       renderPage(page);
+      if (page === 'habits') await prepareHabits();
+      if (page === 'focus') { await focusView?.entered(); await dataSource?.ensureLoaded(); }
       if (page === 'review') await prepareReview();
       const setRoute = fromHash ? history.replaceState.bind(history) : (history.pushState || history.replaceState).bind(history);
       setRoute(null, '', '#' + prefix + navigation.current);
@@ -181,16 +196,19 @@ async function background() {
 }
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden) {
+    focusView?.stopTicks();
     $('token').type = 'password'; $('toggle-token').textContent = '显示令牌'; $('toggle-token').setAttribute('aria-pressed', 'false');
     await background();
   } else {
+    focusView?.entered();
     try { await dataSource?.refresh(); await controller?.foreground(); reviewView?.refresh(); } catch (e) { showError(e); }
     registration?.update().catch(() => {});
   }
 });
+window.addEventListener('pageshow', event => { if (event.persisted) focusView?.entered(); });
 window.addEventListener('beforeunload', event => {
   // 浏览器不等待 beforeunload 的 Promise；启动 flush，并在有待保存输入时请求保留页面。
-  if (dirty || tasksView?.pending.size || tasksView?.hasStepDraft() || document.activeElement?.tagName === 'TEXTAREA') { event.preventDefault(); event.returnValue = ''; }
+  if (dirty || tasksView?.pending.size || tasksView?.hasStepDraft() || habitsView?.busy || habitsView?.journal.dirty || document.activeElement?.tagName === 'TEXTAREA') { event.preventDefault(); event.returnValue = ''; }
   flushViews().catch(e => { $('offline-ready').textContent = '输入仍保留：' + e.message; });
 });
 async function run(action) {
@@ -221,10 +239,10 @@ $('confirm-clear').addEventListener('click', async () => {
   try {
     await flushViews();
     if (controller) await controller.clear(); else await store.clear();
-    await controller?.dispose(); reviewView?.destroy(); dirty = false; store.close(); location.reload();
+    await controller?.dispose(); habitsView?.destroy(); focusView?.destroy(); reviewView?.destroy(); dirty = false; store.close(); location.reload();
   } catch (e) { showError(e, 'clear-result'); busy = false; controls(); $('confirm-clear').disabled = false; }
 });
-for (const [id, method] of [['sim-task', 'editTask'], ['sim-review', 'editReview']]) $(id).addEventListener('click', async () => {
+for (const [id, method] of [['sim-task', 'editTask'], ['sim-review', 'editReview'], ['sim-habit', 'editHabit']]) $(id).addEventListener('click', async () => {
   if (!sim || busy) return; busy = true; $(id).disabled = true;
   try { const result = await sim[method](); $('sim-result').textContent = result.ok ? '模拟电脑已发布；回到前台或点“立即同步”读取。' : result.message; }
   catch { $('sim-result').textContent = '模拟电脑无法修改这处冲突，请先在手机解决，再同步。'; }
@@ -232,6 +250,11 @@ for (const [id, method] of [['sim-task', 'editTask'], ['sim-review', 'editReview
 });
 $('sim-network').addEventListener('click', () => { if (!sim) return; sim.setOffline(sim.isOnline()); $('sim-network').textContent = sim.isOnline() ? '模拟断网' : '恢复网络'; networkChanged(); });
 function newDeviceId() { const bytes = crypto.getRandomValues(new Uint8Array(16)); return 'phone-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''); }
+async function prepareHabits() {
+  if (!dataSource || appDisposed) return;
+  try { await dataSource.ensureLoaded(); }
+  catch (error) { habitsView?.snack('习惯尚未载入：' + error.message); throw error; }
+}
 // 复盘页保持原接口；内容齐全前用外壳占位，不把未载入误当成空数据。
 async function prepareReview() {
   if (reviewView || !dataSource || appDisposed) return;
@@ -266,8 +289,13 @@ async function startStorage() {
     }
     saved = (await store.readMetadata()).record; dataSource = await createDataSource({ store, demo: demoMode, tasksFirst: !demoMode }); controller?.setDataSource(dataSource);
     tasksView = new TasksView({ document, source: dataSource, main, onSaved: () => { renderStatus(); } });
+    habitsView = new HabitsView({ document, root: $('habits-root'), source: dataSource, onSaved: renderStatus });
+    focusView = new FocusView({ document, source: dataSource, timer: new FocusTimer({ store, source: dataSource, newId: newDeviceId }),
+      onNotice: renderFocusNotice, ...focusBell(window) });
+    await focusView.entered();
     reviewUI = saved.settings.reviewUI || {};
-    if (!dataSource.snapshot().loadingBuckets.length || navigation.current === 'review') await prepareReview();
+    if (navigation.current === 'habits') await prepareHabits();
+    if (!dataSource.snapshot().loadingBuckets.length || ['review', 'focus'].includes(navigation.current)) await prepareReview();
     else {
       $('task-loading').textContent = '专注统计及其他内容正在载入…';
     $('review-root').textContent = '正在载入…'; $('review-root').setAttribute('aria-busy', 'true');
@@ -282,7 +310,7 @@ async function startStorage() {
     syncState.setConflicts(dataSource.snapshot().conflicts.filter(c => !c.hiddenByDeletion).length);
     if (navigation.current === 'tasks') tasksView.entered();
     storageReady = true; fillSettings(); controls();
-    if (!demoMode && !saved.settings.joined) { history.replaceState(null, '', '#' + prefix + 'settings'); renderPage('settings', false); }
+    if (!demoMode && !saved.settings.joined && !['habits', 'focus'].includes(navigation.current)) { history.replaceState(null, '', '#' + prefix + 'settings'); renderPage('settings', false); }
     if (controller?.snapshot().message) $('connection-result').textContent = controller.snapshot().message;
     if (saved.settings.joined && !demoMode) await controller.foreground();
   } catch (error) {

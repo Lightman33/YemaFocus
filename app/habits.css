@@ -1,0 +1,43 @@
+/* 沿用外壳已校核的明暗配色；未排程格减淡底色，不降低文字对比度。 */
+#page-habits h1 { margin-bottom: 8px; font-size: 1.5rem; }
+.habit-item { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px; margin: 8px 0 12px; }
+.habit-row { display: flex; gap: 8px; align-items: center; }
+.habit-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border); background: #22C55E; }
+/* 颜色编号沿用 PlannerData.ProjectColorHex；颜色点不承担文字或状态提示。 */
+.habit-color-1 { background: #2E9BFF; }
+.habit-color-2 { background: #14B8A6; }
+.habit-color-3 { background: #8B5CF6; }
+.habit-color-4 { background: #F97316; }
+.habit-color-5 { background: #EC4899; }
+.habit-color-6 { background: #EAB308; }
+.habit-color-7 { background: #EF4444; }
+.habit-color-8 { background: #6366F1; }
+.habit-color-9 { background: #64748B; }
+.habit-text { flex: 1; min-width: 0; }
+.habit-name { font-size: 1rem; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.habit-name-button { width: 100%; min-height: 44px; min-width: 44px; padding: 0; background: transparent; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.habit-text p { margin: 2px 0; overflow-wrap: anywhere; }
+.habit-days { display: grid; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 2px; margin-top: 10px; }
+.habit-check { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 44px; min-height: 66px; padding: 4px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--hover); color: var(--ink); }
+.habit-check.is-unscheduled { background: var(--surface); border-style: dashed; color: var(--caption); }
+.habit-check.is-checked { background: var(--accent); color: var(--button-ink); border-style: solid; }
+.habit-check.has-conflict { border: 2px solid var(--danger); color: var(--danger); background: var(--surface); }
+.habit-check:disabled { opacity: 1; }
+.habit-today { flex: none; width: 66px; }
+.habit-check-symbol { font-size: 1.25rem; line-height: 1.3; }
+.habit-day-label, .habit-day-date { font-size: .75rem; line-height: 1.4; }
+.habit-other summary { cursor: pointer; min-height: 44px; padding: 8px 0; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.habit-footer { margin: 18px 0 8px; }
+.habit-journal-list { margin-top: 12px; border-top: 1px solid var(--border); }
+.habit-journal-entry { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.habit-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.habit-journal-dialog { width: min(90vw, 480px); }
+.habit-journal-dialog h2 { overflow-wrap: anywhere; }
+.habit-journal-dialog textarea { width: 100%; min-width: 0; min-height: 100px; padding: 10px; font: inherit; font-size: max(1rem, 16px); color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.habit-journal-dialog button { min-width: 44px; min-height: 44px; }
+#habits-root .conflict-card { min-width: 0; padding: 8px; }
+#habits-root .conflict-card button { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 359px) {
+  .habit-item { padding: 4px; }
+  .habit-days { grid-template-columns: repeat(4, minmax(44px, 1fr)); gap: 4px; }
+}

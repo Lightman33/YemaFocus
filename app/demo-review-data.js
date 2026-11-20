@@ -29,8 +29,11 @@ export function createDemoReviewData(today) {
   planner.reviews.push(makeReview(Period.of('month', today), 0));
   planner.tasks.push({ id: 'demo-repeat', title: '每周虚构整理（重复任务只读）', date: today, done: false, doneAt: null, repeat: { kind: 'Weekly', interval: 1, weekMask: 127 }, steps: [] });
   planner.habits = [
-    { id: 'demo-read', name: '示例阅读', kind: 'Daily', start: addDays(today, -25), checks: Array.from({ length: 21 }, (_, i) => addDays(today, -i)).filter((_, i) => i % 4 !== 0) },
-    { id: 'demo-stretch', name: '示例伸展练习', kind: 'TimesPerWeek', perWeek: 3, start: addDays(today, -25), checks: Array.from({ length: 21 }, (_, i) => addDays(today, -i)).filter((_, i) => i % 2 === 0) }
+    { id: 'demo-read', name: '示例阅读', kind: 'Daily', start: addDays(today, -25), checks: Array.from({ length: 21 }, (_, i) => addDays(today, -i)).filter((_, i) => i % 4 !== 0),
+      journal: { [addDays(today, -1)]: { note: '读了两页虚构故事，记下一句话。', photos: ['fictional-book.jpg'], futureCaption: '虚构照片引用，不包含照片文件' }, [addDays(today, -3)]: { note: '今天的示例小记：慢慢读也很好。', photos: [] } } },
+    { id: 'demo-stretch', name: '示例伸展练习', kind: 'TimesPerWeek', perWeek: 3, start: addDays(today, -25), checks: Array.from({ length: 21 }, (_, i) => addDays(today, -i)).filter((_, i) => i % 2 === 0) },
+    { id: 'demo-walk', name: '示例午后散步', color: 1, kind: 'Weekdays', weekMask: 31, start: addDays(today, -25), checks: [addDays(weekStart(today), -7), addDays(weekStart(today), -5)] },
+    { id: 'demo-garden', name: '示例周末照料植物', color: 2, kind: 'Weekdays', weekMask: 96, start: addDays(today, -25), checks: [addDays(weekStart(today), -2)] }
   ];
   const reviewId = Period.of('day', today).id, title = '收获与亮点', path = ['review-module', reviewId, title, '0'];
   const conflicts = [{ key: JSON.stringify(path), path, deleteConflict: false, both: true, candidates: [

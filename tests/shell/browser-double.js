@@ -7,7 +7,7 @@ export function browserDouble(initial = freshRecord(), { noStorage = false, serv
   // 只模拟 DOM 事件与事务，不模拟 Safari 渲染、真实 IndexedDB 或 PWA 安装。
   const document = parseDocument(html);
   const nodes = new Map(document.querySelectorAll('[id]').map(node => [node.id, node]));
-  const tabs = ['tasks', 'review', 'settings'].map(page => { const tab = new ElementDouble(); tab.dataset.page = page; return tab; });
+  const tabs = document.querySelectorAll('[data-page]');
   const skip = new ElementDouble();
   const settingsControls = ['owner', 'repo', 'token', 'device-name', 'toggle-token', 'save-settings', 'test-connection', 'sync-now'].map(id => nodes.get(id));
   nodes.get('settings-form').querySelectorAll = () => settingsControls;
