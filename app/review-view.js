@@ -6,7 +6,21 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
   const doc = root.ownerDocument, win = doc.defaultView || globalThis.window;
   const actions = new ReviewActions(dataSource, { now });
   const el = (tag, text = '', className = '') => { const node = doc.createElement(tag); node.textContent = String(text); if (className) node.className = className; return node; };
-  const button = (text, name, fn, className = 'secondary') => { const b = el('button', text, className); b.type = 'button'; b.setAttribute('aria-label', name || text); b.addEventListener('click', () => { Promise.resolve().then(fn).catch(showError); }); return b; };
+  const focusedEditor = () => {
+    const input = doc.activeElement;
+    return input?.tagName === 'TEXTAREA' && root.contains(input) ? input : null;
+  };
+  const button = (text, name, fn, className = 'secondary') => {
+    const b = el('button', text, className); b.type = 'button'; b.setAttribute('aria-label', name || text);
+    // 保留原来的焦点直到点击派发，避免键盘先收起、按钮跟着滚动。
+    b.addEventListener('mousedown', event => { if (focusedEditor()) event.preventDefault(); });
+    b.addEventListener('click', () => {
+      const editor = focusedEditor();
+      try { Promise.resolve(fn()).catch(showError); } catch (error) { showError(error); }
+      if (editor && doc.activeElement === editor) b.focus({ preventScroll: true });
+    });
+    return b;
+  };
   let ui = {};
   try { ui = preferences?.read() || {}; } catch { /* 偏好读取失败不阻止编辑 */ }
   if (!ui || typeof ui !== 'object' || Array.isArray(ui)) ui = {};
@@ -16,7 +30,7 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
   if (!period && initialDay) period = ui.scale === 'week' ? defaultWeek(initialDay) : Period.of(SCALES.includes(ui.scale) ? ui.scale : 'day', initialDay);
   let destroyed = false, timer = null, flushChain = Promise.resolve(), generation = 0, fields = new Map(), modules = new Map();
   let score = 0, scoreDirty = null, savedMessage = '', messageTimer, undoAction = null, undoUntil = 0, switching = false;
-  let expandedDone = false, focusMode = 'task', statsRenderer = null, statistic = null;
+  let expandedDone = false, focusMode = 'task', statsRenderer = null, statistic = null, openImportedData = null;
   const saveUI = () => { try { Promise.resolve(preferences?.write({ scale: period?.scale, period: period?.id, mode })).catch(() => {}); } catch { /* 偏好保存失败不阻止编辑 */ } };
   root.className = (root.className + ' review-page').trim(); root.replaceChildren();
   const heading = el('div', '', 'review-heading'); heading.append(el('h1', '复盘与统计'));
@@ -40,8 +54,9 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
   const importButton = button('导入本期数据', '导入本期数据，可撤销', async () => {
     await flush();
     statistic ||= computeStats(snapshot.planner, period, snapshot.records || [], snapshot.today, snapshot.timeZone);
-    const receipt = await actions.importData(period, statsToText(statistic, snapshot.planner, { now: now(), timeZone: snapshot.timeZone, maxItems: 30 }));
-    refresh(); const data = modules.get(DATA_TITLE); if (data) { data.open = true; updateModule(data); }
+    const importedPeriod = period;
+    const receipt = await actions.importData(importedPeriod, statsToText(statistic, snapshot.planner, { now: now(), timeZone: snapshot.timeZone, maxItems: 30 }));
+    openImportedData = importedPeriod.id; refresh();
     snack(receipt.description, receipt.undo);
   });
   const copyButton = button('复制全文', '复制全文 Markdown', async () => { await flush(); const result = await actions.copyAll(period); if (result.copied) snack('已复制 Markdown 全文'); else showCopy(result.text); });
@@ -66,8 +81,8 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
     input.addEventListener('input', dirty); input.addEventListener('change', dirty);
     input.addEventListener('compositionstart', () => { entry.composing = true; clearTimeout(timer); });
     input.addEventListener('compositionend', () => { entry.composing = false; dirty(); });
-    input.addEventListener('blur', () => { if (!entry.composing) flush().then(refresh).catch(showError); });
-    input.addEventListener('focus', () => { if (!entry.dirty) entry.token = snapshot.editToken; input.scrollIntoView?.({ block: 'center', behavior: 'auto' }); });
+    input.addEventListener('blur', () => { if (!entry.composing) flush().catch(showError); });
+    input.addEventListener('focus', () => { if (!entry.dirty) entry.token = snapshot.editToken; });
     resize(input); return entry;
   }
   function updateStars() { starButtons.forEach((b, i) => { b.textContent = i < score ? '★' : '☆'; b.setAttribute('aria-pressed', String(i < score)); b.disabled = !editable() || hasConflict('review-score'); }); }
@@ -99,24 +114,36 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
   }
 
   function updateModule(section) {
-    const value = section.entry.input.value;
+    const input = section.entry.input, value = input.value, editing = section.open && section.edit;
     section.toggle.textContent = (section.open ? '▼ ' : '▶ ') + (section.name || '其他') + (section.extra ? '（存档模块）' : '');
     section.toggle.setAttribute('aria-expanded', String(section.open)); section.preview.textContent = trim(value).split(/\r?\n/)[0] || '还没写';
-    section.body.hidden = !section.open;
-    section.read.textContent = value || '还没写'; section.read.hidden = section.edit;
-    section.entry.input.hidden = !section.edit; section.editButton.hidden = section.name !== DATA_TITLE || section.edit;
-    section.entry.input.disabled = !editable() || hasConflict('review-module', section.name) && doc.activeElement !== section.entry.input; section.editButton.disabled = !editable() || hasConflict('review-module', section.name);
-    const cs = currentConflicts().filter(c => pathOf(c)[0] === 'review-module' && pathOf(c)[2] === section.name); conflictCards(section.conflict, cs);
-    resize(section.entry.input);
+    section.preview.hidden = section.open;
+    section.read.textContent = value || '还没写'; section.read.hidden = !section.open || section.edit;
+    section.editButton.hidden = section.read.hidden;
+    // 收起时保留文字框的布局盒，同时退出 Tab 顺序并对读屏隐藏。
+    section.editor.setAttribute('aria-hidden', String(!editing)); input.tabIndex = editing ? 0 : -1;
+    const canEdit = editable(), conflict = hasConflict('review-module', section.name);
+    input.disabled = !canEdit || conflict && doc.activeElement !== input; section.editButton.disabled = !canEdit || conflict;
+    if (editing) resize(input);
+  }
+  function focusModule(input) {
+    if (input.disabled) return;
+    const end = input.value.length;
+    input.setSelectionRange?.(end, end);
+    input.focus();
   }
   function addModule(name, value, extra) {
-    const card = el('section', '', 'review-module'), conflict = el('div'), toggle = button('', '展开或收起模块：' + (name || '其他')), preview = el('span', '', 'review-preview caption');
-    const body = el('div', '', 'review-module-body'), input = el('textarea'), read = el('pre', '', 'review-fulltext');
+    const card = el('section', '', 'review-module'), conflict = el('div'), preview = el('span', '', 'review-preview caption');
+    const body = el('div', '', 'review-module-body'), editor = el('div', '', 'review-module-editor'), input = el('textarea'), read = el('pre', '', 'review-fulltext');
     input.rows = 2; input.setAttribute('aria-label', '复盘模块：' + (name || '其他'));
-    const section = { name, extra, card, conflict, toggle, preview, body, read, entry: bindInput(input, name, value), open: false, edit: name !== DATA_TITLE };
-    toggle.addEventListener('click', () => { section.open = !section.open; updateModule(section); if (section.open && section.edit) { input.focus(); input.setSelectionRange?.(input.value.length, input.value.length); } });
-    section.editButton = button('编辑文字', '编辑本期数据文字', () => { section.edit = true; updateModule(section); input.focus(); });
-    body.append(read, section.editButton, input); card.append(conflict, toggle, preview, body); sectionBox.append(card); modules.set(name, section); updateModule(section); return section;
+    const section = { name, extra, card, conflict, preview, editor, read, entry: bindInput(input, name, value), open: false, edit: name !== DATA_TITLE };
+    section.toggle = button('', '展开或收起模块：' + (name || '其他'), () => {
+      if (section.open && doc.activeElement === input) section.toggle.focus({ preventScroll: true });
+      section.open = !section.open; updateModule(section);
+      if (section.open && section.edit) focusModule(input);
+    }, 'review-module-toggle');
+    section.editButton = button('编辑文字', '编辑本期数据文字', () => { section.edit = true; updateModule(section); focusModule(input); });
+    editor.append(input); body.append(read, section.editButton, editor); card.append(conflict, section.toggle, preview, body); sectionBox.append(card); modules.set(name, section); return section;
   }
   function syncWriter() {
     const record = findReview(snapshot.planner, period), configured = reviewModules(snapshot.settings, period.scale);
@@ -132,22 +159,25 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
       let section = modules.get(name);
       if (!section) section = addModule(name, value, Boolean(name && name !== DATA_TITLE && !configured.includes(name)));
       if (!section.entry.dirty && doc.activeElement !== section.entry.input) section.entry.input.value = value;
+      if (name === DATA_TITLE && openImportedData === period.id) section.open = true;
       updateModule(section);
+      const cs = currentConflicts().filter(c => pathOf(c)[0] === 'review-module' && pathOf(c)[2] === name);
+      conflictCards(section.conflict, cs);
     }
-    // 没有输入框正在聚焦时再调整模块顺序，避免移动祖先节点让 Safari 丢光标。
-    if (!sectionBox.contains(doc.activeElement)) sectionBox.append(...sections.map(([name]) => modules.get(name).card));
+    openImportedData = null;
+    // 只有顺序真的变了，且模块里没有焦点时，才移动卡片节点。
+    const ordered = sections.map(([name]) => modules.get(name).card);
+    if (!sectionBox.contains(doc.activeElement) && ordered.some((card, index) => sectionBox.children[index] !== card)) sectionBox.append(...ordered);
     conflictCards(scoreConflicts, currentConflicts().filter(c => pathOf(c)[0] === 'review-score'));
     conflictCards(titleConflicts, currentConflicts().filter(c => pathOf(c)[0] === 'review-title'));
     importButton.disabled = !editable() || hasConflict('review-module', DATA_TITLE); copyButton.disabled = !editable();
-    if (savedMessage) status.textContent = savedMessage;
+    if (savedMessage) { status.className = 'review-save caption'; status.textContent = savedMessage; }
     else if (![...fields.values()].some(e => e.dirty) && !scoreDirty) status.textContent = record ? snapshot.timeZone && Number.isFinite(new Date(record.updated).getTime()) ? '已存本机 ' + wallTime(new Date(record.updated), snapshot.timeZone).slice(11, 16) : '已有复盘记录' : '还没有记录 · 点开模块说话或打字，会自动保存';
   }
-  // 手指按下到抬起之间不重绘（Claude 2026-11-13 在真实浏览器里发现）：
-  // 光标在输入框里时点按钮，输入框先失焦并触发保存和重绘；如果这时把按钮换成新节点，
-  // “按下”和“抬起”落在两个不同的节点上，这次点击就丢了。重绘推迟到抬起之后。
-  let pointerDown = false, refreshQueued = false;
+  // 屏幕抬手后还可能先派发兼容鼠标事件，再派发 click。这段时间也保留按钮节点和位置。
+  let pointerId = null, pointerTimer = null, refreshQueued = false;
   function refresh() {
-    if (pointerDown) { refreshQueued = true; return; }
+    if (pointerId !== null) { refreshQueued = true; return; }
     refreshNow();
   }
   function refreshNow() {
@@ -202,7 +232,7 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
       }
       if ([...fields.values()].some(e => e.composing)) throw new Error('请先完成输入法选词，文字仍保留在当前页。');
       if (!editable()) return;
-      savedMessage = '已存本机 ' + wallTime(now(), snapshot.timeZone).slice(11, 16); status.className = 'review-save caption'; status.textContent = savedMessage; refresh();
+      savedMessage = '已存本机 ' + wallTime(now(), snapshot.timeZone).slice(11, 16); refresh();
     };
     const pending = flushChain.catch(() => {}).then(execute); flushChain = pending; return pending;
   }
@@ -223,15 +253,24 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
   }
   const onHidden = () => { if (doc.visibilityState === 'hidden') flush().catch(showError); }, onPageHide = () => { flush().catch(showError); };
   doc.addEventListener('visibilitychange', onHidden); win?.addEventListener?.('pagehide', onPageHide);
-  const onPointerDown = () => { pointerDown = true; };
-  const onPointerEnd = () => {
-    if (!pointerDown) return;
-    pointerDown = false;
-    // click 紧跟在抬起之后派发；等它处理完再补做被推迟的重绘。
-    if (refreshQueued) { refreshQueued = false; (win?.setTimeout ?? setTimeout)(() => { if (!pointerDown) refresh(); }, 0); }
+  const onPointerDown = event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    clearTimeout(pointerTimer); pointerTimer = null; pointerId = event.pointerId;
   };
+  const finishPointerAfter = delay => {
+    clearTimeout(pointerTimer);
+    pointerTimer = setTimeout(() => {
+      pointerId = null; pointerTimer = null;
+      if (refreshQueued) { refreshQueued = false; refresh(); }
+    }, delay);
+  };
+  // 普通点击在 click 处理完后刷新。抬手却没有 click 时，仍会补做刷新。
+  const onPointerUp = event => { if (event.pointerId === pointerId) finishPointerAfter(350); };
+  const onPointerCancel = event => { if (event.pointerId === pointerId) finishPointerAfter(0); };
+  const onClick = () => { if (pointerTimer !== null) finishPointerAfter(0); };
   root.addEventListener?.('pointerdown', onPointerDown, true);
-  doc.addEventListener?.('pointerup', onPointerEnd, true); doc.addEventListener?.('pointercancel', onPointerEnd, true);
+  doc.addEventListener?.('pointerup', onPointerUp, true); doc.addEventListener?.('pointercancel', onPointerCancel, true);
+  doc.addEventListener?.('click', onClick, true);
   const unsubscribe = dataSource.subscribe(refresh);
   // 统计视图在同一文件下方安装；不额外暴露页面内部对象。
   installStatistics();
@@ -304,10 +343,11 @@ export function mountReview({ root, dataSource, now = () => Date.now(), preferen
     };
   }
   return { refresh, flush, destroy() {
-    destroyed = true; unsubscribe?.(); clearTimeout(timer); clearTimeout(messageTimer);
+    destroyed = true; unsubscribe?.(); clearTimeout(timer); clearTimeout(messageTimer); clearTimeout(pointerTimer);
     doc.removeEventListener?.('visibilitychange', onHidden); win?.removeEventListener?.('pagehide', onPageHide);
     root.removeEventListener?.('pointerdown', onPointerDown, true);
-    doc.removeEventListener?.('pointerup', onPointerEnd, true); doc.removeEventListener?.('pointercancel', onPointerEnd, true);
+    doc.removeEventListener?.('pointerup', onPointerUp, true); doc.removeEventListener?.('pointercancel', onPointerCancel, true);
+    doc.removeEventListener?.('click', onClick, true);
     root.replaceChildren();
   } };
 }

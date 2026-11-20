@@ -15,6 +15,90 @@ function setup(source=memorySource(),storage=new Map()) {
  return {doc,root,view,source,find,input};
 }
 const tick=()=>new Promise(r=>setTimeout(r,10));
+const primaryTouch = { pointerId: 1, isPrimary: true, button: 0 };
+
+test('模块点一次同步展开并把光标放在末尾，打开时隐藏预览', () => {
+ const source = memorySource();
+ source.state.planner.reviews = [{id:'day:2026-11-13', content:'【今日完成】\n虚构第一行\n虚构第二行', updated:now()}];
+ const s = setup(source), toggle = s.find('展开或收起模块：今日完成'), input = s.input('复盘模块：今日完成');
+ const editor = input.parentNode, preview = toggle.parentNode.querySelector('.review-preview');
+ assert.equal(preview.textContent, '虚构第一行');
+ assert.equal(preview.hidden, false);
+ assert.equal(editor.getAttribute('aria-hidden'), 'true');
+ assert.equal(input.tabIndex, -1);
+ for (let node = input; node !== s.root; node = node.parentNode) assert.equal(node.hidden, false);
+ let selection;
+ input.setSelectionRange = (start, end) => { selection = [start, end]; };
+ input.addEventListener('focus', () => assert.deepEqual(selection, [input.value.length, input.value.length]));
+ toggle.emit('click');
+ assert.equal(s.doc.activeElement, input);
+ assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+ assert.equal(editor.getAttribute('aria-hidden'), 'false');
+ assert.equal(input.tabIndex, 0);
+ assert.equal(preview.hidden, true);
+ toggle.emit('click');
+ assert.equal(s.doc.activeElement, toggle);
+ assert.equal(preview.hidden, false);
+ assert.equal(editor.getAttribute('aria-hidden'), 'true');
+ assert.equal(input.tabIndex, -1);
+ s.view.destroy();
+});
+
+test('从正在输入的模块点另一个模块或评分时保留焦点到点击，并保存上一框', async () => {
+ const s = setup(), first = s.input('复盘模块：今日完成'), second = s.input('复盘模块：问题与卡点');
+ s.find('展开或收起模块：今日完成').emit('click');
+ first.value = '虚构的待保存文字';
+ first.emit('input');
+ const toggle = s.find('展开或收起模块：问题与卡点');
+ s.root.emit('pointerdown', {...primaryTouch, target:toggle});
+ s.doc.emit('pointerup', primaryTouch);
+ assert.equal(toggle.emit('mousedown').defaultPrevented, true);
+ assert.equal(s.doc.activeElement, first);
+ s.doc.emit('click', {target:toggle});
+ toggle.emit('click');
+ assert.equal(s.doc.activeElement, second);
+ assert.equal(second.scrolledIntoView, undefined);
+ await until(() => s.source.state.planner.reviews[0]?.content.includes(first.value));
+ assert.equal(s.doc.activeElement, second);
+ const star = s.find('评分 3 星，再点同一颗清零');
+ assert.equal(star.emit('mousedown').defaultPrevented, true);
+ star.emit('click');
+ assert.equal(s.doc.activeElement, star);
+ await until(() => s.source.state.planner.reviews[0]?.score === 3);
+ s.view.destroy();
+});
+
+test('抬手后若先失焦保存，冲突按钮保留到这次点击处理完', async () => {
+ const source = memorySource(), path = ['review-module', 'day:2026-11-13', '问题与卡点'];
+ source.state.conflicts = [{key:JSON.stringify(path), path, candidates:[{branch:'a', value:'虚构甲'}, {branch:'b', value:'虚构乙'}]}];
+ const s = setup(source), input = s.input('一句话总结');
+ input.focus();
+ input.value = '点击处理冲突前写的虚构总结';
+ input.emit('input');
+ const label = '保留这一份（版本 1）', keep = s.find(label);
+ s.root.emit('pointerdown', {...primaryTouch, target:keep});
+ s.doc.emit('pointerup', primaryTouch);
+ input.blur();
+ await s.view.flush();
+ assert.equal(s.find(label), keep);
+ assert.equal(source.state.planner.reviews[0].title, input.value);
+ s.doc.emit('click', {target:keep});
+ keep.emit('click');
+ await until(() => source.resolved?.choice.branch === 'a' && !s.find(label));
+ s.view.destroy();
+});
+
+test('抬手未产生点击也会补做已排队的刷新', async () => {
+ const s = setup(), input = s.input('一句话总结');
+ s.root.emit('pointerdown', {...primaryTouch, target:input});
+ s.source.state.planner.reviews = [{id:'day:2026-11-13', title:'虚构的同步总结', updated:now()}];
+ s.source.publish();
+ s.doc.emit('pointerup', primaryTouch);
+ assert.equal(input.value, '');
+ await until(() => input.value === '虚构的同步总结');
+ s.view.destroy();
+});
+
 test('切尺度、周期、回本期和模式；偏好重开恢复',async()=>{
  const storage=new Map(),s=setup(memorySource(),storage);s.find('周复盘').emit('click');await until(()=>s.root.textContent.includes('第46周'));s.find('上一期').emit('click');await until(()=>s.root.textContent.includes('第45周'));s.find('回到本期').emit('click');await until(()=>s.root.textContent.includes('第46周'));s.find('看统计').emit('click');await tick();s.view.destroy();const reopened=setup(memorySource(),storage);assert.equal(reopened.find('看统计').getAttribute('aria-pressed'),'true');assert.ok(reopened.root.textContent.includes('第46周'));reopened.view.destroy();
 });
@@ -37,9 +121,19 @@ test('五颗星每颗可读，重复点清零；未加入禁用输入',async()=>
 
 test('导入本期数据只读卡片，编辑文字入口，撤销保留总结',async()=>{
  const source=createDemoReviewSource('2026-11-13',{now}),s=setup(source);
- s.find('导入本期数据，可撤销').emit('click');await until(()=>s.input('复盘模块：本期数据'));
- const input=s.input('复盘模块：本期数据');assert.equal(input.hidden,true);assert.ok(input.value.includes('■ 概览'));
- s.find('编辑本期数据文字').emit('click');await until(()=>!input.hidden);
+ const importButton = s.find('导入本期数据，可撤销');
+ s.root.emit('pointerdown', {...primaryTouch, target:importButton});
+ s.doc.emit('pointerup', primaryTouch);
+ s.doc.emit('click', {target:importButton});
+ importButton.emit('click');await until(()=>s.input('复盘模块：本期数据'));
+ const input = s.input('复盘模块：本期数据'), editor = input.parentNode, read = editor.parentNode.querySelector('pre');
+ assert.equal(editor.getAttribute('aria-hidden'), 'true');
+ assert.equal(read.hidden, false);
+ assert.ok(input.value.includes('■ 概览'));
+ s.find('编辑本期数据文字').emit('click');
+ assert.equal(s.doc.activeElement, input);
+ assert.equal(editor.getAttribute('aria-hidden'), 'false');
+ assert.equal(read.hidden, true);
  const title=s.input('一句话总结');title.value='导入后新写总结';title.emit('input');await s.view.flush();
  s.find('撤销刚才的操作').emit('click');await until(()=>!findReview(source.snapshot().planner,'day:2026-11-13').content.includes('【本期数据】'));
  assert.equal(findReview(source.snapshot().planner,'day:2026-11-13').title,'导入后新写总结');s.view.destroy();
